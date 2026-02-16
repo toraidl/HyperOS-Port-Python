@@ -1,8 +1,15 @@
 # HyperOS Porting Tool (Python)
 
+**This project was completed by gemini pro + opencode + Antigravity, adapted from https://github.com/toraidl/hyperos_port.**
+
 [中文 (Chinese)](README_CN.md)
 
 A Python-based tool for porting HyperOS ROMs to various devices. This tool automates many of the steps required for porting, including unpacking, patching, repacking, and signing.
+
+## Supported Devices
+
+- Theoretically supports Xiaomi/Redmi devices with Qualcomm processors and kernel version 5.10 or later.
+- Specific devices may require modifications in `devices/<device_code>/override/`.
 
 ## Features
 
