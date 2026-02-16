@@ -501,10 +501,106 @@ class FrameworkModifier:
 
         self._integrate_custom_platform_key(wd)
 
+        # ==========================================
+        # 6. 注入 HookHelper 实现 (AutoCopy)
+        # ==========================================
+        self._inject_hook_helper_methods(wd)
+
         self._apkeditor_build(wd, jar)
 
-        # --------------------------------------------------------------------------
-        # PIF Patch 逻辑 (模拟 patches.sh)
+    def _inject_hook_helper_methods(self, work_dir):
+        """
+        注入 HookHelper 的额外方法 (AutoCopy 等)
+        """
+        hook_helper = self._find_file_recursive(work_dir, "HookHelper.smali")
+        if not hook_helper:
+            self.logger.warning("HookHelper.smali not found, creating new one...")
+            return
+
+        self.logger.info(f"Injecting implementation into {hook_helper.name}...")
+        
+        # 定义 Smali 代码
+        smali_code = r"""
+.method public static onPendingIntentGetActivity(Landroid/content/Context;Landroid/content/Intent;)V
+    .locals 5
+
+    .line 100
+    if-eqz p1, :cond_end
+
+    # Check for extras
+    invoke-virtual {p1}, Landroid/content/Intent;->getExtras()Landroid/os/Bundle;
+    move-result-object v0
+    if-nez v0, :cond_check_clip
+
+    goto :cond_end
+
+    :cond_check_clip
+    # Try to find "sms_body" or typical keys
+    const-string v1, "android.intent.extra.TEXT"
+    invoke-virtual {v0, v1}, Landroid/os/Bundle;->getString(Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v1
+    
+    if-nez v1, :cond_check_body
+    const-string v1, "sms_body"
+    invoke-virtual {v0, v1}, Landroid/os/Bundle;->getString(Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v1
+
+    :cond_check_body
+    if-nez v1, :cond_scan_match
+    goto :cond_end
+
+    :cond_scan_match
+    # Now v1 is the content string. Run Regex.
+    # Regex: (?<![0-9])([0-9]{4,6})(?![0-9])
+    
+    const-string v2, "(?<![0-9])([0-9]{4,6})(?![0-9])"
+    invoke-static {v2}, Ljava/util/regex/Pattern;->compile(Ljava/lang/String;)Ljava/util/regex/Pattern;
+    move-result-object v2
+    invoke-virtual {v2, v1}, Ljava/util/regex/Pattern;->matcher(Ljava/lang/CharSequence;)Ljava/util/regex/Matcher;
+    move-result-object v2
+    
+    invoke-virtual {v2}, Ljava/util/regex/Matcher;->find()Z
+    move-result v3
+    if-eqz v3, :cond_end
+    
+    # Found match! Group 1 is the code
+    const/4 v3, 0x1
+    invoke-virtual {v2, v3}, Ljava/util/regex/Matcher;->group(I)Ljava/lang/String;
+    move-result-object v2
+    
+    if-eqz v2, :cond_end
+    
+    # Copy to Clipboard
+    const-string v3, "clipboard"
+    invoke-virtual {p0, v3}, Landroid/content/Context;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
+    move-result-object v3
+    check-cast v3, Landroid/content/ClipboardManager;
+    
+    if-eqz v3, :cond_end
+    
+    # ClipData.newPlainText("Verification Code", code)
+    const-string v4, "Verification Code"
+    invoke-static {v4, v2}, Landroid/content/ClipData;->newPlainText(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;
+    move-result-object v2
+    
+    invoke-virtual {v3, v2}, Landroid/content/ClipboardManager;->setPrimaryClip(Landroid/content/ClipData;)V
+    
+    :cond_end
+    return-void
+.end method
+"""
+        # Append method to HookHelper.smali
+        content = hook_helper.read_text(encoding='utf-8')
+        if "onPendingIntentGetActivity" not in content:
+            with open(hook_helper, "a", encoding="utf-8") as f:
+                f.write(smali_code)
+                
+            self.logger.info("Added onPendingIntentGetActivity to HookHelper.")
+        else:
+            self.logger.info("onPendingIntentGetActivity already exists.")
+
+    # --------------------------------------------------------------------------
+    # PIF Patch 逻辑 (模拟 patches.sh)
         # --------------------------------------------------------------------------
     def _apply_pif_patch(self, work_dir, pif_zip):
         self.logger.info("Applying PIF Patch (Instrumentation, KeyStoreSpi, AppPM)...")
