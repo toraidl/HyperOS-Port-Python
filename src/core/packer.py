@@ -345,62 +345,120 @@ class Repacker:
 
     def _generate_flash_script(self, super_image_path):
         """
-        Generate fastboot flash scripts (Windows/Linux/Mac)
-        Ref: port.sh lines 1733+
+        Generate hybrid flashing scripts (Fastboot + Recovery)
+        Structure:
+        /
+        ├── super.zst
+        ├── firmware-update/
+        ├── META-INF/
+        │   ├── com/google/android/update-binary
+        │   ├── com/google/android/updater-script
+        │   └── zstd
+        ├── bin/
+        │   └── windows/ (adb, fastboot, zstd.exe)
+        ├── windows_flash_script.bat
+        └── mac_linux_flash_script.sh
         """
-        self.logger.info("Generating flashing scripts...")
+        self.logger.info("Generating hybrid flashing scripts...")
         
         # Prepare output directory
-        # out/{os_type}_{device_code}_{port_rom_version}
-        # Simplified: out/{device_code}_{port_rom_version}_fastboot
-        out_name = f"{self.ctx.stock_rom_code}_{self.ctx.target_rom_version}_fastboot"
+        out_name = f"{self.ctx.stock_rom_code}_{self.ctx.target_rom_version}_hybrid"
         out_path = self.out_dir / out_name
         
         if out_path.exists():
             shutil.rmtree(out_path)
         out_path.mkdir(parents=True, exist_ok=True)
         
+        # 1. Create directory structure
         bin_windows = out_path / "bin/windows"
         bin_windows.mkdir(parents=True, exist_ok=True)
         
         firmware_update = out_path / "firmware-update"
         firmware_update.mkdir(parents=True, exist_ok=True)
-
-        # 1. Copy super image
-        self.logger.info(f"Copying {super_image_path.name}...")
-        shutil.copy2(super_image_path, out_path / super_image_path.name)
         
-        # 2. Copy firmware images
-        # Repacker uses self.ctx.repack_images_dir
+        meta_inf = out_path / "META-INF/com/google/android"
+        meta_inf.mkdir(parents=True, exist_ok=True)
+
+        # 2. Copy super image (must be zst for hybrid)
+        self.logger.info(f"Copying {super_image_path.name}...")
+        shutil.copy2(super_image_path, out_path / "super.zst")
+        
+        # 3. Copy firmware images
         if self.ctx.repack_images_dir.exists():
             for fw in self.ctx.repack_images_dir.glob("*.img"):
                  shutil.copy2(fw, firmware_update)
         
-        # 3. Copy tools (fastboot, scripts)
-        # Assuming we have a template folder bin/flash in project root
-        # If not, we might need to create dummy scripts or download tools
+        # 4. Copy tools and scripts
         flash_template = Path("bin/flash")
         
         if flash_template.exists():
-             # Windows tools
+             # A. Windows Tools
              if (flash_template / "platform-tools-windows").exists():
                  shutil.copytree(flash_template / "platform-tools-windows", bin_windows, dirs_exist_ok=True)
              
-             # Scripts
-             for script in ["windows_flash_script.bat", "mac_linux_flash_script.sh"]:
-                 src_script = flash_template / script
-                 if src_script.exists():
-                     dest_script = out_path / script
-                     shutil.copy2(src_script, dest_script)
-                     
-                     # Update script content based on A/B status
-                     if not self.ctx.is_ab_device:
-                         self._patch_script_for_a_only(dest_script)
-                     
-                     # Update script for firmware flashing
-                     self._patch_script_for_firmware(dest_script, firmware_update)
+             # B. Recovery Tools (zstd)
+             # The update-binary expects META-INF/zstd
+             zstd_bin = flash_template / "zstd"
+             if zstd_bin.exists():
+                 shutil.copy2(zstd_bin, out_path / "META-INF/zstd")
+             
+             # C. Scripts & Update Binary
+             files_to_process = {
+                 "windows_flash_script.bat": out_path / "windows_flash_script.bat",
+                 "mac_linux_flash_script.sh": out_path / "mac_linux_flash_script.sh",
+                 "update-binary": meta_inf / "update-binary"
+             }
+             
+             # Create dummy updater-script (required by TWRP)
+             (meta_inf / "updater-script").write_text("# dummy\n", encoding='utf-8')
 
-        self.logger.info(f"Fastboot ROM generated at: {out_path}")
+             for src_name, dest_path in files_to_process.items():
+                 src_file = flash_template / src_name
+                 if src_file.exists():
+                     shutil.copy2(src_file, dest_path)
+                     self._process_script_placeholders(dest_path)
+                     
+                     # Specific handling for Fastboot scripts
+                     if "flash_script" in src_name:
+                         if not self.ctx.is_ab_device:
+                             self._patch_script_for_a_only(dest_path)
+                         self._patch_script_for_firmware(dest_path, firmware_update)
+
+        # 5. Zip the package
+        self.logger.info("Zipping hybrid package...")
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        zip_name = f"{self.ctx.stock_rom_code}-hybrid-{self.ctx.target_rom_version}-{timestamp}.zip"
+        zip_path = self.out_dir / zip_name
+        
+        # Create zip (shutil.make_archive creates zip in a temp way, better explicit)
+        # We need to zip the contents of out_path, not out_path itself
+        
+        # Use shell zip for speed and permission preservation (if available) or python zipfile
+        # Python zipfile is safer for cross-platform
+        shutil.make_archive(str(zip_path.with_suffix('')), 'zip', out_path)
+        
+        # Compute MD5
+        md5 = hashlib.md5(open(zip_path, 'rb').read()).hexdigest()[:10]
+        final_zip_name = f"{self.ctx.stock_rom_code}-hybrid-{self.ctx.target_rom_version}-{timestamp}-{md5}.zip"
+        final_zip_path = self.out_dir / final_zip_name
+        zip_path.rename(final_zip_path)
+        
+        self.logger.info(f"Hybrid ROM generated: {final_zip_path}")
+
+    def _process_script_placeholders(self, file_path):
+        """Replace placeholders in scripts/update-binary"""
+        content = file_path.read_text(encoding='utf-8', errors='ignore')
+        
+        replacements = {
+            "device_code": self.ctx.stock_rom_code,
+            "baseversion": self.ctx.base_android_version, # Or full version string?
+            "portversion": self.ctx.target_rom_version,
+        }
+        
+        for key, value in replacements.items():
+            content = content.replace(key, str(value))
+            
+        file_path.write_text(content, encoding='utf-8')
 
     def _patch_script_for_a_only(self, script_path):
         """Remove _a/_b references for A-only devices"""
