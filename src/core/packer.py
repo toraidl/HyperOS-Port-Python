@@ -239,6 +239,235 @@ class Repacker:
             return 0
         return 0
     
+        return 0
+    
+    def pack_super_image(self):
+        """
+        Pack super.img for non-payload.bin ROMs
+        """
+        self.logger.info("Packing super.img...")
+        
+        # 1. Define paths
+        lpmake_path = self.ota_tools_dir / "bin" / "lpmake"
+        if not lpmake_path.exists():
+             self.logger.error(f"lpmake not found at {lpmake_path}")
+             return
+
+        super_img = self.ctx.target_dir / "super.img"
+        super_size = self._get_super_size()
+        
+        # 2. Base arguments
+        # --metadata-size 65536 --super-name super --block-size 4096
+        base_args = [
+            str(lpmake_path),
+            "--metadata-size", "65536",
+            "--super-name", "super",
+            "--block-size", "4096",
+            "--device", f"super:{super_size}",
+            "--output", str(super_img)
+        ]
+
+        # 3. Handle A-only vs V-AB
+        is_ab = self.ctx.is_ab_device
+        
+        if not is_ab:
+            self.logger.info("Packing A-only super.img")
+            # --metadata-slots 2 --group=qti_dynamic_partitions:$superSize
+            base_args.extend(["--metadata-slots", "2"])
+            base_args.extend(["--group", f"qti_dynamic_partitions:{super_size}"])
+            base_args.append("-F") # Sparse
+
+            # Iterate partitions
+            # List from shell script: odm mi_ext system system_ext product vendor
+            # But we should scan what we have
+            partitions = ["odm", "mi_ext", "system", "system_ext", "product", "vendor", "odm_dlkm", "vendor_dlkm", "system_dlkm", "product_dlkm"]
+            
+            for part in partitions:
+                img_path = self.ctx.target_dir / f"{part}.img"
+                if img_path.exists():
+                    size = img_path.stat().st_size
+                    self.logger.info(f"Partition [{part}]: {size} bytes")
+                    # --partition name:attributes:size:group --image name=path
+                    # attributes: none (or readonly)
+                    base_args.extend([
+                        "--partition", f"{part}:none:{size}:qti_dynamic_partitions",
+                        "--image", f"{part}={img_path}"
+                    ])
+        else:
+            self.logger.info("Packing V-AB super.img")
+            # --virtual-ab --metadata-slots 3
+            # --group=qti_dynamic_partitions_a:$superSize --group=qti_dynamic_partitions_b:$superSize
+            base_args.extend(["--virtual-ab", "--metadata-slots", "3"])
+            base_args.extend(["--group", f"qti_dynamic_partitions_a:{super_size}"])
+            base_args.extend(["--group", f"qti_dynamic_partitions_b:{super_size}"])
+            base_args.append("-F")
+
+            # Scan partitions
+            # Use super_list from context if available, or scan standard names
+            partitions = ["odm", "mi_ext", "system", "system_ext", "product", "vendor", "odm_dlkm", "vendor_dlkm", "system_dlkm", "product_dlkm"]
+            
+            for part in partitions:
+                img_path = self.ctx.target_dir / f"{part}.img"
+                if img_path.exists():
+                    size = img_path.stat().st_size
+                    self.logger.info(f"Partition [{part}]: {size} bytes")
+                    # --partition name_a:none:size:group_a --image name_a=path
+                    # --partition name_b:none:0:group_b
+                    base_args.extend([
+                        "--partition", f"{part}_a:none:{size}:qti_dynamic_partitions_a",
+                        "--image", f"{part}_a={img_path}",
+                        "--partition", f"{part}_b:none:0:qti_dynamic_partitions_b"
+                    ])
+
+        # 4. Run lpmake
+        try:
+            self.shell.run(base_args)
+            self.logger.info("super.img generated successfully.")
+        except Exception as e:
+            self.logger.error(f"Failed to generate super.img: {e}")
+            return
+
+        # 5. Compress to super.zst
+        self.logger.info("Compressing super.img to super.zst...")
+        zst_path = self.ctx.target_dir / "super.zst"
+        try:
+            # Try to use zstd from system, or bin/zstd
+            # Assume system zstd is available or copy it
+            self.shell.run(["zstd", "--rm", str(super_img), "-o", str(zst_path)])
+            self.logger.info("Compressed super.zst generated.")
+        except Exception as e:
+             self.logger.warning(f"zstd compression failed: {e}. Keeping super.img")
+             # Fallback: if zstd fails, keep super.img? 
+             # The flash script expects super.zst usually.
+        
+        # 6. Generate Flashing Script (Output folder)
+        self._generate_flash_script(zst_path if zst_path.exists() else super_img)
+
+    def _generate_flash_script(self, super_image_path):
+        """
+        Generate fastboot flash scripts (Windows/Linux/Mac)
+        Ref: port.sh lines 1733+
+        """
+        self.logger.info("Generating flashing scripts...")
+        
+        # Prepare output directory
+        # out/{os_type}_{device_code}_{port_rom_version}
+        # Simplified: out/{device_code}_{port_rom_version}_fastboot
+        out_name = f"{self.ctx.stock_rom_code}_{self.ctx.target_rom_version}_fastboot"
+        out_path = self.out_dir / out_name
+        
+        if out_path.exists():
+            shutil.rmtree(out_path)
+        out_path.mkdir(parents=True, exist_ok=True)
+        
+        bin_windows = out_path / "bin/windows"
+        bin_windows.mkdir(parents=True, exist_ok=True)
+        
+        firmware_update = out_path / "firmware-update"
+        firmware_update.mkdir(parents=True, exist_ok=True)
+
+        # 1. Copy super image
+        self.logger.info(f"Copying {super_image_path.name}...")
+        shutil.copy2(super_image_path, out_path / super_image_path.name)
+        
+        # 2. Copy firmware images
+        # Repacker uses self.ctx.repack_images_dir
+        if self.ctx.repack_images_dir.exists():
+            for fw in self.ctx.repack_images_dir.glob("*.img"):
+                 shutil.copy2(fw, firmware_update)
+        
+        # 3. Copy tools (fastboot, scripts)
+        # Assuming we have a template folder bin/flash in project root
+        # If not, we might need to create dummy scripts or download tools
+        flash_template = Path("bin/flash")
+        
+        if flash_template.exists():
+             # Windows tools
+             if (flash_template / "platform-tools-windows").exists():
+                 shutil.copytree(flash_template / "platform-tools-windows", bin_windows, dirs_exist_ok=True)
+             
+             # Scripts
+             for script in ["windows_flash_script.bat", "mac_linux_flash_script.sh"]:
+                 src_script = flash_template / script
+                 if src_script.exists():
+                     dest_script = out_path / script
+                     shutil.copy2(src_script, dest_script)
+                     
+                     # Update script content based on A/B status
+                     if not self.ctx.is_ab_device:
+                         self._patch_script_for_a_only(dest_script)
+                     
+                     # Update script for firmware flashing
+                     self._patch_script_for_firmware(dest_script, firmware_update)
+
+        self.logger.info(f"Fastboot ROM generated at: {out_path}")
+
+    def _patch_script_for_a_only(self, script_path):
+        """Remove _a/_b references for A-only devices"""
+        content = script_path.read_text(encoding='utf-8', errors='ignore')
+        
+        # Simple replacements
+        content = content.replace("_a", "")
+        content = content.replace("_b", "") # Careful not to break other things, but usually safe for partition names
+        
+        # Remove lines containing "_b" if it's a specific flash command?
+        # Shell script uses sed '/_b/d' which deletes lines with _b
+        lines = content.splitlines()
+        new_lines = [line for line in lines if "_b" not in line]
+        
+        # Handle specific blocks (SET_ACTION_SLOT_A_BEGIN...)
+        # This requires more complex parsing or just simple line filtering
+        
+        script_path.write_text("\n".join(new_lines), encoding='utf-8')
+
+    def _patch_script_for_firmware(self, script_path, firmware_dir):
+        """Inject firmware flash commands"""
+        # Read firmware files
+        fw_files = [f.name for f in firmware_dir.glob("*")]
+        if not fw_files: return
+        
+        content = script_path.read_text(encoding='utf-8', errors='ignore')
+        
+        # Generate insertion block
+        is_windows = script_path.suffix == ".bat"
+        insertion = []
+        
+        for fw in fw_files:
+            # Map filename to partition name
+            # mapping logic from port.sh lines 1761+
+            part = fw.split('.')[0] # Default
+            if fw == "uefi_sec.mbn": part = "uefisecapp"
+            elif fw == "qupv3fw.elf": part = "qupfw"
+            elif fw == "NON-HLOS.bin": part = "modem"
+            elif fw == "km4.mbn": part = "keymaster"
+            elif fw == "BTFM.bin": part = "bluetooth"
+            elif fw == "dspso.bin": part = "dsp"
+            
+            # Skip dtbo/cust if needed (port.sh line 1759)
+            if "dtbo" in fw or "cust" in fw: continue
+
+            if self.ctx.is_ab_device:
+                 if is_windows:
+                     insertion.append(f"bin\\windows\\fastboot.exe flash {part}_a %~dp0firmware-update\\{fw}")
+                     insertion.append(f"bin\\windows\\fastboot.exe flash {part}_b %~dp0firmware-update\\{fw}")
+                 else:
+                     insertion.append(f"fastboot flash {part}_a firmware-update/{fw}")
+                     insertion.append(f"fastboot flash {part}_b firmware-update/{fw}")
+            else:
+                 # A-only
+                 if is_windows:
+                     insertion.append(f"bin\\windows\\fastboot.exe flash {part} %~dp0firmware-update\\{fw}")
+                 else:
+                     insertion.append(f"fastboot flash {part} firmware-update/{fw}")
+
+        # Insert after "# firmware" marker
+        marker = "REM firmware" if is_windows else "# firmware"
+        
+        if marker in content:
+            parts = content.split(marker)
+            new_content = parts[0] + marker + "\n" + "\n".join(insertion) + parts[1]
+            script_path.write_text(new_content, encoding='utf-8')
+
     def pack_ota_payload(self):
         """
         Pack AOSP OTA payload (generate payload.bin zip)

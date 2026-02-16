@@ -123,7 +123,10 @@ def main():
         logger.info(f"All images packed successfully! Check {target_work_dir}/*.img")
 
         # Generate OTA payload (Optional)
-        packer.pack_ota_payload() 
+        # packer.pack_ota_payload() 
+        
+        # Generate Super Image (Fastboot)
+        packer.pack_super_image()
 
     except Exception as e:
         logger.error(f"An error occurred during porting: {e}", exc_info=True)
