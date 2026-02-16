@@ -11,6 +11,16 @@ A Python-based tool for porting HyperOS ROMs to various devices. This tool autom
 - Theoretically supports Xiaomi/Redmi devices with Qualcomm processors and kernel version 5.10 or later.
 - Specific devices may require modifications in `devices/<device_code>/override/`.
 
+### Successfully Tested
+
+- **Base Device (Stock):** Xiaomi 13 (Official HyperOS 2.0/3.0)
+- **Port ROM Source:**
+  - Xiaomi 14
+  - Xiaomi 15
+  - Xiaomi 17
+  - Redmi K90 / K90 Pro
+  - (Supports latest HyperOS CN 3.0 Stable and Beta versions)
+
 ## Features
 
 - **Automated Porting**: Streamlines the process of porting HyperOS ROMs.
