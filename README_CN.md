@@ -1,8 +1,15 @@
 # HyperOS 移植工具 (Python 版)
 
+**本项目由 gemini pro + opencode + Antigravity 完成，根据 https://github.com/toraidl/hyperos_port 改编而来。**
+
 [English](README.md)
 
 这是一个基于 Python 的工具，用于将 HyperOS ROM 移植到各种设备。该工具自动化了移植所需的许多步骤，包括解包、修补、重新打包和签名。
+
+## 支持机型
+
+- 理论上支持内核版本 5.10 及以上的高通平台小米/红米设备。
+- 具体机型可能需要修改 `devices/<机型代码>/override/` 目录下的文件。
 
 ## 功能特性
 
