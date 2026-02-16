@@ -32,6 +32,7 @@ def parse_args():
     parser.add_argument("--work-dir", default="build", help="Working directory (default: build)")
     parser.add_argument("--clean", action="store_true", help="Clean working directory before starting")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--pack-type", choices=["super", "payload"], default="payload", help="Output format: super (Super Image/Fastboot) or payload (OTA Payload/Recovery). Default: payload")
     return parser.parse_args()
 
 def clean_work_dir(work_dir: Path):
@@ -122,11 +123,13 @@ def main():
         
         logger.info(f"All images packed successfully! Check {target_work_dir}/*.img")
 
-        # Generate OTA payload (Optional)
-        # packer.pack_ota_payload() 
-        
-        # Generate Super Image (Fastboot)
-        packer.pack_super_image()
+        # Execute Packing Strategy
+        if args.pack_type == "super":
+            # Generate Super Image (Fastboot)
+            packer.pack_super_image()
+        else:
+            # Generate OTA payload (Recovery)
+            packer.pack_ota_payload() 
 
     except Exception as e:
         logger.error(f"An error occurred during porting: {e}", exc_info=True)
