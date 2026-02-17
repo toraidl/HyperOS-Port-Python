@@ -56,7 +56,8 @@ class SystemModifier:
             self.android_version = int(self.ctx.port.get_prop("ro.build.version.release", "14"))
         except:
             self.android_version = 14
-
+        
+        self._unlock_device_features()
         self._replace_overlays()
         self._migrate_configs()
         self._replace_misound_and_biometric()
@@ -64,6 +65,139 @@ class SystemModifier:
         self._fix_vintf_manifest()
 
         self.logger.info("System Modification Completed.")
+
+    def _unlock_device_features(self):
+        """
+        Unlock device features based on JSON configuration (Common + Device specific)
+        """
+        self.logger.info("Unlocking device features (AOD, AI Display, MEMC)...")
+        
+        # 1. Load Configuration
+        config = self._load_feature_config()
+        if not config:
+            return
+
+        # 2. Apply XML Features
+        xml_features = config.get("xml_features", {})
+        if xml_features:
+            self._apply_xml_features(xml_features)
+
+        # 3. Apply Build Props
+        build_props = config.get("build_props", {})
+        if build_props:
+            self._apply_build_props(build_props)
+
+    def _load_feature_config(self):
+        config = {}
+        
+        # Load Common Config
+        common_cfg = Path("devices/common/features.json")
+        if common_cfg.exists():
+            try:
+                with open(common_cfg, 'r') as f:
+                    config = json.load(f)
+                self.logger.info("Loaded common features config.")
+            except Exception as e:
+                self.logger.error(f"Failed to load common features: {e}")
+
+        # Load Device Config (Override)
+        device_cfg = Path(f"devices/{self.ctx.stock_rom_code}/features.json")
+        if device_cfg.exists():
+            try:
+                with open(device_cfg, 'r') as f:
+                    device_config = json.load(f)
+                
+                # Deep merge logic
+                for key, value in device_config.items():
+                    if isinstance(value, dict) and key in config:
+                        config[key].update(value)
+                    else:
+                        config[key] = value
+                self.logger.info(f"Loaded device features config for {self.ctx.stock_rom_code}.")
+            except Exception as e:
+                self.logger.error(f"Failed to load device features: {e}")
+        
+        return config
+
+    def _apply_xml_features(self, features):
+        feat_dir = self.ctx.target_dir / "product/etc/device_features"
+        if not feat_dir.exists():
+            self.logger.warning("device_features directory not found.")
+            return
+
+        # Target file: usually matches stock code, or just find any XML
+        xml_file = feat_dir / f"{self.ctx.stock_rom_code}.xml"
+        if not xml_file.exists():
+            # Fallback: try finding any XML in the folder
+            try:
+                xml_file = next(feat_dir.glob("*.xml"))
+            except StopIteration:
+                self.logger.warning("No device features XML found.")
+                return
+
+        self.logger.info(f"Modifying features in {xml_file.name}...")
+        content = xml_file.read_text(encoding='utf-8')
+        
+        modified = False
+        for name, value in features.items():
+            str_value = str(value).lower() # true/false
+            
+            # Check existence
+            # Regex to find <bool name="feature_name">...</bool>
+            pattern = re.compile(rf'<bool name="{re.escape(name)}">.*?</bool>')
+            
+            if pattern.search(content):
+                # Update existing
+                new_tag = f'<bool name="{name}">{str_value}</bool>'
+                new_content = pattern.sub(new_tag, content)
+                if new_content != content:
+                    content = new_content
+                    modified = True
+                    self.logger.debug(f"Updated feature: {name} = {str_value}")
+            else:
+                # Insert new (before </features>)
+                if "</features>" in content:
+                    new_tag = f'    <bool name="{name}">{str_value}</bool>\n</features>'
+                    content = content.replace("</features>", new_tag)
+                    modified = True
+                    self.logger.debug(f"Added feature: {name} = {str_value}")
+        
+        if modified:
+            xml_file.write_text(content, encoding='utf-8')
+
+    def _apply_build_props(self, props_map):
+        for partition, props in props_map.items():
+            if partition == "vendor":
+                prop_file = self.ctx.target_dir / "vendor/build.prop"
+            elif partition == "product":
+                prop_file = self.ctx.target_dir / "product/etc/build.prop"
+            else:
+                continue
+            
+            if not prop_file.exists():
+                continue
+                
+            content = prop_file.read_text(encoding='utf-8', errors='ignore')
+            lines = content.splitlines()
+            new_lines = []
+            
+            # Simple parsing to avoid duplicates
+            existing_keys = set()
+            for line in lines:
+                if "=" in line and not line.strip().startswith("#"):
+                    existing_keys.add(line.split("=")[0].strip())
+                new_lines.append(line)
+            
+            appended = False
+            for key, value in props.items():
+                if key not in existing_keys:
+                    new_lines.append(f"{key}={value}")
+                    self.logger.debug(f"Appended prop to {partition}: {key}={value}")
+                    appended = True
+                # If we wanted to update existing props, we'd need more complex logic here
+            
+            if appended:
+                prop_file.write_text("\n".join(new_lines) + "\n", encoding='utf-8')
 
     def _find_file_recursive(self, root_dir: Path, filename: str) -> Path | None:
         if not root_dir.exists(): return None

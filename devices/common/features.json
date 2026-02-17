@@ -1,0 +1,25 @@
+{
+    "xml_features": {
+        "support_AI_display": true,
+        "support_screen_enhance_engine": true,
+        "support_SR_for_image_display": true,
+        "support_aod_fullscreen": true,
+        "support_aod_aon": true,
+        "support_manual_dimming": true,
+        "support_main_xiaoai": true,
+        "support_ota_validate": false,
+        "support_wild_boost": true,
+        "support_wild_boost_bat_perf": true,
+        "support_power_consumption": true
+    },
+    "build_props": {
+        "vendor": {
+            "ro.vendor.media.video.frc.support": "true"
+        },
+        "product": {
+            "debug.game.video.speed": "true",
+            "debug.game.video.support": "true",
+            "persist.miui.extm.dm_opt.enable": "true"
+        }
+    }
+}
