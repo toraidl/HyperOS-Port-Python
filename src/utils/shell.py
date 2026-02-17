@@ -30,20 +30,34 @@ class ShellRunner:
 
         if not self.bin_dir.exists():
             self.logger.warning(f"Binary directory not found: {self.bin_dir}")
+            
+        self.otatools_bin = project_root / "otatools" / "bin"
 
     def get_binary_path(self, tool_name: str) -> Path:
         """
         Get the absolute path of the tool.
-        e.g., input 'lpunpack', returns '/path/to/project/bin/linux/x86_64/lpunpack'
+        Search Order:
+        1. bin/{os}/{arch}/ (Platform specific tools)
+        2. otatools/bin/ (Google OTA tools)
+        3. bin/ (Common tools)
+        4. System PATH
         """
+        # 1. Platform specific
         bin_path = self.bin_dir / tool_name
         if bin_path.exists():
             return bin_path
 
+        # 2. OTATools
+        ota_path = self.otatools_bin / tool_name
+        if ota_path.exists():
+            return ota_path
+
+        # 3. Common bin
         common_bin = self.bin_dir.parent.parent / tool_name
         if common_bin.exists():
             return common_bin
 
+        # 4. Fallback to command name (relies on PATH)
         return Path(tool_name)
 
     def run(self, cmd: Union[str, List[str]], cwd: Optional[Path] = None, 
