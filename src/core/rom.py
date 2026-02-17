@@ -220,58 +220,30 @@ class RomPackage:
                         with source, target:
                             shutil.copyfileobj(source, target)
 
-                    # 2. Handle super.img if present
-                    if has_super and super_path_in_zip:
-                        self.logger.info(f"[{self.label}] Found super.img, processing logical partitions...")
+                    # === Step 1.5: Process Sparse/Split Images (super.img, cust.img) ===
+                    self._process_sparse_images()
+
+                    # 2. Handle super.img unpacking
+                    super_img = self.images_dir / "super.img"
+                    if super_img.exists():
+                        self.logger.info(f"[{self.label}] Found super.img, unpacking logical partitions...")
                         
-                        # Extract super.img to temp
-                        temp_super = self.work_dir / "super.img"
-                        self.logger.info(f"Extracting {super_path_in_zip} to {temp_super}...")
-                        with z.open(super_path_in_zip) as source, open(temp_super, "wb") as target:
-                            shutil.copyfileobj(source, target)
-                        
-                        # Unpack super.img
                         try:
                             # lpunpack is required
-                            # partitions arg determines what to unpack
-                            # If partitions=None, unpack ALL.
-                            # If partitions=["system", ...], unpack specific.
-                            
                             unpack_cmd = ["lpunpack"]
                             
                             if partitions:
-                                self.logger.info(f"[{self.label}] Unpacking specific partitions from super.img: {partitions}")
-                                # lpunpack can take multiple -p? No, usually one per run or all.
-                                # Let's check lpunpack help or assume we loop.
-                                # Or just unpack all if efficient enough? super.img is large, unpacking all takes space.
-                                # Iterative unpacking is better.
-                                
-                                for part in partitions:
-                                    # Try unpacking 'part' and 'part_a' (for A/B)
-                                    # We don't know slot suffix in super.img easily without querying.
-                                    # Attempt both or just 'part' if usually suffixed inside?
-                                    # Usually partitions in super are named "system_a", "system_b" or just "system".
-                                    
-                                    # Simple strategy: Try unpacking specific name.
-                                    # If failed, try appending _a? 
-                                    # Actually lpunpack fails if partition not found.
-                                    
-                                    # To be safe and robust (like port.sh), we might want to just unpack ALL to images_dir
-                                    # and let the subsequent steps pick what they need.
-                                    # But space...
-                                    pass
-                                
-                                # Re-reading port.sh: it loops and runs lpunpack -p ${part} or ${part}_a
+                                self.logger.info(f"[{self.label}] Unpacking specific partitions: {partitions}")
                                 
                                 for part in partitions:
                                     # Try extracting 'part'
-                                    cmd = ["lpunpack", "-p", part, str(temp_super), str(self.images_dir)]
+                                    cmd = ["lpunpack", "-p", part, str(super_img), str(self.images_dir)]
                                     try:
                                         self.shell.run(cmd, check=False)
                                     except: pass
                                     
-                                    # Try extracting 'part_a'
-                                    cmd_a = ["lpunpack", "-p", f"{part}_a", str(temp_super), str(self.images_dir)]
+                                    # Try extracting 'part_a' (V-AB)
+                                    cmd_a = ["lpunpack", "-p", f"{part}_a", str(super_img), str(self.images_dir)]
                                     try:
                                         self.shell.run(cmd_a, check=False)
                                     except: pass
@@ -279,30 +251,78 @@ class RomPackage:
                             else:
                                 # Unpack ALL
                                 self.logger.info(f"[{self.label}] Unpacking ALL partitions from super.img...")
-                                self.shell.run(["lpunpack", str(temp_super), str(self.images_dir)])
+                                self.shell.run(["lpunpack", str(super_img), str(self.images_dir)])
                                 
                         except Exception as e:
                             self.logger.error(f"Failed to unpack super.img: {e}")
                             raise
                         finally:
-                            # Cleanup super.img
-                            if temp_super.exists():
-                                os.remove(temp_super)
+                            # Cleanup super.img to save space? 
+                            # If Base ROM, we might want to keep it? 
+                            # Usually we extract logical partitions and use them. super.img is redundant.
+                            if super_img.exists():
+                                os.remove(super_img)
 
         except Exception as e:
             self.logger.error(f"Image extraction failed: {e}")
             raise
 
-        # === Step 2: Images -> Folders (Extract to folders) ===
-        # Determine which images need to be extracted to folders
-        if partitions:
-            # If partitions specified, extract these
-            candidates = partitions
-        else:
-            # If not specified (Base ROM), extract only "logical partitions", skip firmware
-            candidates = ANDROID_LOGICAL_PARTITIONS
+    def _process_sparse_images(self):
+        """
+        Merge/Convert sparse images (super.img.*, cust.img.*) to raw images using simg2img
+        """
+        # Define the binary path (assuming Linux x86_64 for now as per env)
+        # In a real scenario, this should be passed from Context or detected properly
+        simg2img_bin = Path("bin/linux/x86_64/simg2img").resolve()
+        if not simg2img_bin.exists():
+            # Fallback to system path
+            simg2img_bin = "simg2img"
 
-        self._batch_extract_files(candidates)
+        # 1. Handle super.img
+        super_chunks = sorted(list(self.images_dir.glob("super.img.*")))
+        # Filter strictly for numeric suffixes or standard split patterns if needed, 
+        # but glob "super.img.*" matches the shell script logic.
+        
+        target_super = self.images_dir / "super.img"
+        
+        if super_chunks:
+            self.logger.info(f"[{self.label}] Merging sparse super images: {[c.name for c in super_chunks]}...")
+            try:
+                cmd = [str(simg2img_bin)] + [str(c) for c in super_chunks] + [str(target_super)]
+                self.shell.run(cmd)
+                
+                # Cleanup chunks
+                for c in super_chunks:
+                    os.unlink(c)
+            except Exception as e:
+                self.logger.error(f"Failed to merge super.img: {e}")
+                raise
+
+        elif target_super.exists():
+            # Try converting single sparse to raw (in-place replacement strategy)
+            # simg2img input output
+            self.logger.info(f"[{self.label}] converting super.img to raw (if sparse)...")
+            temp_raw = self.images_dir / "super.raw.img"
+            try:
+                self.shell.run([str(simg2img_bin), str(target_super), str(temp_raw)])
+                shutil.move(temp_raw, target_super)
+            except Exception as e:
+                self.logger.warning(f"simg2img conversion skipped/failed (likely already raw): {e}")
+                if temp_raw.exists(): os.unlink(temp_raw)
+
+        # 2. Handle cust.img
+        cust_chunks = sorted(list(self.images_dir.glob("cust.img.*")))
+        target_cust = self.images_dir / "cust.img"
+        
+        if cust_chunks:
+            self.logger.info(f"[{self.label}] Merging sparse cust images...")
+            try:
+                cmd = [str(simg2img_bin)] + [str(c) for c in cust_chunks] + [str(target_cust)]
+                self.shell.run(cmd)
+                for c in cust_chunks:
+                    os.unlink(c)
+            except Exception as e:
+                self.logger.error(f"Failed to merge cust.img: {e}")
 
     def _batch_extract_files(self, candidates: list[str]):
         """
