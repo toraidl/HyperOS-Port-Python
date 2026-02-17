@@ -1,0 +1,36 @@
+[
+    {
+        "description": "System Overlays",
+        "type": "file",
+        "search_path": "product",
+        "match_mode": "exact",
+        "ensure_exists": false,
+        "files": [
+            "AospFrameworkResOverlay.apk",
+            "MiuiFrameworkResOverlay.apk",
+            "MiuiCarrierConfigOverlay.apk",
+            "SettingsRroDeviceSystemUiOverlay.apk",
+            "DevicesAndroidOverlay.apk",
+            "DevicesOverlay.apk",
+            "SettingsRroDeviceHideStatusBarOverlay.apk",
+            "MiuiBiometricResOverlay.apk",
+            "MiuiFrameworkTelephonyResOverlay.apk"
+        ]
+    },
+    {
+        "description": "Audio Effects (MiSound)",
+        "type": "dir",
+        "search_path": "product",
+        "match_mode": "exact",
+        "ensure_exists": false,
+        "files": ["MiSound"]
+    },
+    {
+        "description": "Biometric Services",
+        "type": "dir",
+        "search_path": "product/app",
+        "match_mode": "glob",
+        "ensure_exists": true,
+        "files": ["*Biometric*"]
+    }
+]

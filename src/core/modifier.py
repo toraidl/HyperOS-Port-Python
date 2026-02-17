@@ -58,12 +58,11 @@ class SystemModifier:
             self.android_version = 14
         
         # Order matters!
-        self._replace_overlays()
+        self._process_replacements()
         self._migrate_configs()
         # Unlock features AFTER config migration, otherwise changes to XMLs are lost
         self._unlock_device_features()
         
-        self._replace_misound_and_biometric()
         self._fix_vndk_apex()
         self._fix_vintf_manifest()
         
@@ -72,6 +71,131 @@ class SystemModifier:
             self._apply_eu_localization()
 
         self.logger.info("System Modification Completed.")
+
+    def _process_replacements(self):
+        """
+        Execute file/directory replacements defined in replacements.json.
+        """
+        replacements = self._load_replacement_config()
+        if not replacements:
+            return
+
+        self.logger.info("Processing file replacements...")
+        
+        stock_root = self.ctx.stock.extracted_dir
+        target_root = self.ctx.target_dir
+
+        for rule in replacements:
+            desc = rule.get("description", "Unknown Rule")
+            rtype = rule.get("type", "file")
+            search_path = rule.get("search_path", "")
+            match_mode = rule.get("match_mode", "exact")
+            ensure_exists = rule.get("ensure_exists", False)
+            files = rule.get("files", [])
+
+            self.logger.info(f"Applying rule: {desc}")
+
+            # Define search roots
+            rule_stock_root = stock_root / search_path
+            rule_target_root = target_root / search_path
+
+            if not rule_stock_root.exists():
+                self.logger.debug(f"Source search path not found: {rule_stock_root}")
+                continue
+
+            for pattern in files:
+                # Find matching items in Source (Stock ROM)
+                sources = []
+                if match_mode == "glob":
+                    sources = list(rule_stock_root.glob(pattern))
+                else:
+                    exact_file = rule_stock_root / pattern
+                    if exact_file.exists():
+                        sources = [exact_file]
+                
+                if not sources:
+                    self.logger.debug(f"No source items found for pattern: {pattern}")
+                    continue
+
+                for src_item in sources:
+                    # Calculate relative path to apply to target
+                    rel_name = src_item.name
+                    target_item = rule_target_root / rel_name
+                    
+                    # Logic: 
+                    # If ensure_exists=True: Copy even if target doesn't have it (Force Add)
+                    # If ensure_exists=False: Copy ONLY if target already has it (Replace)
+                    
+                    should_copy = False
+                    
+                    if match_mode == "glob":
+                        # For glob, we might need to find corresponding target by name
+                        # If target_item exists, we replace.
+                        if target_item.exists():
+                            should_copy = True
+                        elif ensure_exists:
+                            should_copy = True
+                    else:
+                        # Exact match
+                        if target_item.exists():
+                            should_copy = True
+                        elif ensure_exists:
+                            should_copy = True
+                            
+                    if should_copy:
+                        self.logger.info(f"  Replacing/Adding: {rel_name}")
+                        
+                        # Prepare target directory
+                        if not target_item.parent.exists():
+                            target_item.parent.mkdir(parents=True, exist_ok=True)
+                            
+                        # Remove existing target
+                        if target_item.exists():
+                            if target_item.is_dir():
+                                shutil.rmtree(target_item)
+                            else:
+                                target_item.unlink()
+                        
+                        # Copy
+                        if src_item.is_dir():
+                            shutil.copytree(src_item, target_item, symlinks=True, dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(src_item, target_item)
+                    else:
+                        self.logger.debug(f"  Skipping {rel_name} (Target missing and ensure_exists=False)")
+
+    def _load_replacement_config(self):
+        """
+        Load replacements.json from common and device folder.
+        Strategy: Append (Common + Device)
+        """
+        replacements = []
+        
+        # 1. Common
+        common_cfg = Path("devices/common/replacements.json")
+        if common_cfg.exists():
+            try:
+                with open(common_cfg, 'r') as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        replacements.extend(data)
+                        self.logger.info("Loaded common replacements.")
+            except Exception as e:
+                self.logger.error(f"Failed to load common replacements: {e}")
+
+        # 2. Device (Append)
+        device_cfg = Path(f"devices/{self.ctx.stock_rom_code}/replacements.json")
+        if device_cfg.exists():
+            try:
+                with open(device_cfg, 'r') as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        replacements.extend(data)
+                        self.logger.info(f"Loaded device replacements for {self.ctx.stock_rom_code}.")
+            except Exception as e:
+                self.logger.error(f"Failed to load device replacements: {e}")
+        
+        return replacements
 
     def _apply_eu_localization(self):
         bundle_path = Path(self.ctx.eu_bundle)
@@ -331,30 +455,6 @@ class SystemModifier:
                 return p
         return None
 
-    def _replace_overlays(self):
-        overlay_list = [
-            "AospFrameworkResOverlay.apk",
-            "MiuiFrameworkResOverlay.apk",
-            "MiuiCarrierConfigOverlay.apk",
-            "SettingsRroDeviceSystemUiOverlay.apk",
-            "DevicesAndroidOverlay.apk",
-            "DevicesOverlay.apk",
-            "SettingsRroDeviceHideStatusBarOverlay.apk",
-            "MiuiBiometricResOverlay.apk",
-            "MiuiFrameworkTelephonyResOverlay.apk"
-        ]
-
-        target_product = self.ctx.target_dir / "product"
-        stock_product = self.ctx.stock.extracted_dir / "product"
-
-        for apk_name in overlay_list:
-            base_apk = self._find_file_recursive(stock_product, apk_name)
-            port_apk = self._find_file_recursive(target_product, apk_name)
-
-            if base_apk and port_apk:
-                self.logger.info(f"Replacing [{apk_name}]...")
-                shutil.copy2(base_apk, port_apk)
-
     def _migrate_configs(self):
         target_product = self.ctx.target_dir / "product"
         stock_product = self.ctx.stock.extracted_dir / "product"
@@ -386,43 +486,6 @@ class SystemModifier:
         target_json = target_product / "etc/device_info.json"
         if stock_json.exists():
              shutil.copy2(stock_json, target_json)
-
-    def _replace_misound_and_biometric(self):
-        target_product = self.ctx.target_dir / "product"
-        stock_product = self.ctx.stock.extracted_dir / "product"
-
-        # MiSound
-        base_misound = self._find_dir_recursive(stock_product, "MiSound")
-        port_misound = self._find_dir_recursive(target_product, "MiSound")
-        if base_misound and port_misound:
-            self.logger.info("Replacing MiSound...")
-            shutil.rmtree(port_misound)
-            shutil.copytree(base_misound, port_misound, dirs_exist_ok=True)
-
-        # MiuiBiometric
-        # 尝试模糊查找 *Biometric*
-        base_bio = None
-        try:
-            base_bio = next(stock_product.glob("app/*Biometric*"))
-        except StopIteration:
-            pass
-            
-        if base_bio:
-            port_bio = None
-            try:
-                port_bio = next(target_product.glob("app/*Biometric*"))
-            except StopIteration:
-                pass
-
-            if port_bio:
-                self.logger.info("Replacing MiuiBiometric...")
-                shutil.rmtree(port_bio)
-                shutil.copytree(base_bio, port_bio, dirs_exist_ok=True)
-            else:
-                # 如果 Port 没有，则直接复制过去
-                target_app = target_product / "app"
-                target_app.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(base_bio, target_app / base_bio.name, dirs_exist_ok=True)
 
     def _apktool_decode(self, apk_path: Path, out_dir: Path):
         self.shell.run_java_jar(self.apktool, ["d", str(apk_path), "-o", str(out_dir), "-f"])
