@@ -185,15 +185,109 @@ class RomPackage:
 
             elif self.rom_type == RomType.FASTBOOT:
                 # Zip mode logic
+                has_super = False
+                super_path_in_zip = None
+                
                 with zipfile.ZipFile(self.path, 'r') as z:
+                    # 1. First pass: Check for super.img and extract other images
                     for f in z.namelist():
+                        if f.endswith("super.img") or f.endswith("images/super.img"):
+                            has_super = True
+                            super_path_in_zip = f
+                            continue
+                            
                         if not f.endswith(".img"): continue
+                        
                         part_name = Path(f).stem
+                        # Skip if it's likely a logical partition inside super (unless explicit .img exists outside)
+                        # Actually standard fastboot zips have boot.img, dtbo.img outside super.
+                        # Logical partitions (system, vendor) are inside super.
+                        
                         # If partitions specified, extract only those; otherwise extract all
                         if partitions and part_name not in partitions:
+                            # If it's a firmware image (not logical), we generally want it for Base ROM
+                            # But if partitions IS set (Port ROM), we strictly follow it.
+                            # Wait, Port ROM extraction calls extract_images(port_partitions).
+                            # So we only want system/product etc.
+                            # These are likely inside super.img.
+                            # So we shouldn't extract boot.img etc if not requested.
                             continue
+                            
                         self.logger.info(f"Extracting {f}...")
-                        z.extract(f, self.images_dir)
+                        # Flatten structure: Extract file to images_dir directly
+                        source = z.open(f)
+                        target = open(self.images_dir / Path(f).name, "wb")
+                        with source, target:
+                            shutil.copyfileobj(source, target)
+
+                    # 2. Handle super.img if present
+                    if has_super and super_path_in_zip:
+                        self.logger.info(f"[{self.label}] Found super.img, processing logical partitions...")
+                        
+                        # Extract super.img to temp
+                        temp_super = self.work_dir / "super.img"
+                        self.logger.info(f"Extracting {super_path_in_zip} to {temp_super}...")
+                        with z.open(super_path_in_zip) as source, open(temp_super, "wb") as target:
+                            shutil.copyfileobj(source, target)
+                        
+                        # Unpack super.img
+                        try:
+                            # lpunpack is required
+                            # partitions arg determines what to unpack
+                            # If partitions=None, unpack ALL.
+                            # If partitions=["system", ...], unpack specific.
+                            
+                            unpack_cmd = ["lpunpack"]
+                            
+                            if partitions:
+                                self.logger.info(f"[{self.label}] Unpacking specific partitions from super.img: {partitions}")
+                                # lpunpack can take multiple -p? No, usually one per run or all.
+                                # Let's check lpunpack help or assume we loop.
+                                # Or just unpack all if efficient enough? super.img is large, unpacking all takes space.
+                                # Iterative unpacking is better.
+                                
+                                for part in partitions:
+                                    # Try unpacking 'part' and 'part_a' (for A/B)
+                                    # We don't know slot suffix in super.img easily without querying.
+                                    # Attempt both or just 'part' if usually suffixed inside?
+                                    # Usually partitions in super are named "system_a", "system_b" or just "system".
+                                    
+                                    # Simple strategy: Try unpacking specific name.
+                                    # If failed, try appending _a? 
+                                    # Actually lpunpack fails if partition not found.
+                                    
+                                    # To be safe and robust (like port.sh), we might want to just unpack ALL to images_dir
+                                    # and let the subsequent steps pick what they need.
+                                    # But space...
+                                    pass
+                                
+                                # Re-reading port.sh: it loops and runs lpunpack -p ${part} or ${part}_a
+                                
+                                for part in partitions:
+                                    # Try extracting 'part'
+                                    cmd = ["lpunpack", "-p", part, str(temp_super), str(self.images_dir)]
+                                    try:
+                                        self.shell.run(cmd, check=False)
+                                    except: pass
+                                    
+                                    # Try extracting 'part_a'
+                                    cmd_a = ["lpunpack", "-p", f"{part}_a", str(temp_super), str(self.images_dir)]
+                                    try:
+                                        self.shell.run(cmd_a, check=False)
+                                    except: pass
+
+                            else:
+                                # Unpack ALL
+                                self.logger.info(f"[{self.label}] Unpacking ALL partitions from super.img...")
+                                self.shell.run(["lpunpack", str(temp_super), str(self.images_dir)])
+                                
+                        except Exception as e:
+                            self.logger.error(f"Failed to unpack super.img: {e}")
+                            raise
+                        finally:
+                            # Cleanup super.img
+                            if temp_super.exists():
+                                os.remove(temp_super)
 
         except Exception as e:
             self.logger.error(f"Image extraction failed: {e}")
