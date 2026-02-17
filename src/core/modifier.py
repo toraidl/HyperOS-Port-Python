@@ -57,9 +57,12 @@ class SystemModifier:
         except:
             self.android_version = 14
         
-        self._unlock_device_features()
+        # Order matters!
         self._replace_overlays()
         self._migrate_configs()
+        # Unlock features AFTER config migration, otherwise changes to XMLs are lost
+        self._unlock_device_features()
+        
         self._replace_misound_and_biometric()
         self._fix_vndk_apex()
         self._fix_vintf_manifest()
