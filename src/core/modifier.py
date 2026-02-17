@@ -108,7 +108,10 @@ class SystemModifier:
                 sources = []
                 if match_mode == "glob":
                     sources = list(rule_stock_root.glob(pattern))
+                elif match_mode == "recursive":
+                    sources = list(rule_stock_root.rglob(pattern))
                 else:
+                    # exact
                     exact_file = rule_stock_root / pattern
                     if exact_file.exists():
                         sources = [exact_file]

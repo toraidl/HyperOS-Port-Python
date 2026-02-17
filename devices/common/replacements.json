@@ -3,7 +3,7 @@
         "description": "System Overlays",
         "type": "file",
         "search_path": "product",
-        "match_mode": "exact",
+        "match_mode": "recursive",
         "ensure_exists": false,
         "files": [
             "AospFrameworkResOverlay.apk",
@@ -21,7 +21,7 @@
         "description": "Audio Effects (MiSound)",
         "type": "dir",
         "search_path": "product",
-        "match_mode": "exact",
+        "match_mode": "recursive",
         "ensure_exists": false,
         "files": ["MiSound"]
     },
