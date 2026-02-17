@@ -19,7 +19,11 @@
         "product": {
             "debug.game.video.speed": "true",
             "debug.game.video.support": "true",
-            "persist.miui.extm.dm_opt.enable": "true"
+            "persist.miui.extm.dm_opt.enable": "true",
+            "persist.sys.oemports10t.pif.autoupdate": "true",
+            "persist.sys.oemports10t.blspoof": "true",
+            "persist.sys.oemports10t.fpspoof": "true",
+            "persist.sys.oemports10t.utils-debug": "true"
         }
     }
 }

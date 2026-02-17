@@ -838,13 +838,7 @@ class FrameworkModifier:
                     f.write("/data/PIF.apk u:object_r:pif_data_file:s0\n")
                     f.write("/data/local/tmp/PIF.apk   u:object_r:pif_data_file:s0\n")
         
-        product_prop = self.ctx.target_dir / "product/etc/build.prop"
-        if product_prop.exists():
-            with open(product_prop, "a") as f:
-                f.write("\npersist.sys.oemports10t.pif.autoupdate=true\n")
-                f.write("persist.sys.oemports10t.blspoof=true\n")
-                f.write("persist.sys.oemports10t.fpspoof=true\n")
-                f.write("persist.sys.oemports10t.utils-debug=true\n")
+        # Properties migrated to devices/common/features.json
 
     # --------------------------------------------------------------------------
     # 自定义平台签名校验逻辑
@@ -1205,22 +1199,9 @@ class RomModifier:
                     "target": "libmigui.so", 
                     "hex_old": "726F2E70726F647563742E646576696365",
                     "hex_new": "726F2E73706F6F6665642E646576696365"
-                },
-                {
-                    "mode": "prop_append",
-                    "target": "build.prop", 
-                    "lines": [
-                        "",
-                        "# ==========================================",
-                        "# Device Spoofing for vermeer (Redmi K70)",
-                        "# ==========================================",
-                        "ro.product.spoofed.name=vermeer",
-                        "ro.spoofed.device=vermeer",
-                        "persist.prophook.com.xiaomi.joyose=DEVICE:vermeer,PRODUCT:23113RKC6C",
-                        "persist.prophook.com.miui.powerkeeper=DEVICE:vermeer,PRODUCT:23113RKC6C"
-                    ]
                 }
             ]
+            # Properties migrated to devices/fuxi/features.json
             
             sync_rules.extend(fuxi_rules)       
             self._apply_wild_boost()

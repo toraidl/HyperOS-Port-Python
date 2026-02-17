@@ -29,6 +29,31 @@ A Python-based tool for porting HyperOS ROMs to various devices. This tool autom
 - **Repacking**: Repacks the modified system into a flashable ZIP file.
 - **Signing**: Signs the output ZIP for installation.
 - **Multi-Device Support**: Configurable for different devices (see `devices/` directory).
+- **Feature Configuration**: Support for modular feature toggles (AOD, AI Engine, etc.) via JSON configuration.
+
+## Feature Configuration
+
+The project uses a JSON-based configuration system to manage device features and system properties.
+
+- **Common Configuration**: `devices/common/features.json`
+  - Defines global features enabled for all devices (e.g., PIF spoofing, WildBoost).
+- **Device Configuration**: `devices/<device_code>/features.json`
+  - Overrides common settings or adds device-specific properties (e.g., Device Spoofing).
+
+Example `features.json`:
+```json
+{
+    "xml_features": {
+        "support_AI_display": true,
+        "support_wild_boost": true
+    },
+    "build_props": {
+        "product": {
+            "ro.product.spoofed.name": "vermeer"
+        }
+    }
+}
+```
 
 ## Prerequisites
 

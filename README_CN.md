@@ -29,6 +29,31 @@
 - **重新打包**：将修改后的系统重新打包为可刷入的 ZIP 文件。
 - **签名**：为输出的 ZIP 文件签名以供安装。
 - **多设备支持**：可针对不同设备进行配置（参见 `devices/` 目录）。
+- **特性配置**：支持通过 JSON 配置模块化开启/关闭系统特性（如 AOD、AI 引擎等）。
+
+## 特性配置 (Feature Configuration)
+
+本项目使用基于 JSON 的配置系统来管理设备特性和系统属性。
+
+- **通用配置**: `devices/common/features.json`
+  - 定义所有设备通用的特性（例如 PIF 伪装、WildBoost 狂暴引擎）。
+- **机型配置**: `devices/<机型代码>/features.json`
+  - 覆盖通用设置或添加特定机型的属性（例如机型伪装）。
+
+`features.json` 示例：
+```json
+{
+    "xml_features": {
+        "support_AI_display": true,
+        "support_wild_boost": true
+    },
+    "build_props": {
+        "product": {
+            "ro.product.spoofed.name": "vermeer"
+        }
+    }
+}
+```
 
 ## 前置条件
 
