@@ -55,6 +55,32 @@
 }
 ```
 
+### 资源替换 (Files & Dirs)
+
+文件和目录的替换规则（如 overlays, 音频配置等）通过 `replacements.json` 管理。
+
+- **通用替换**: `devices/common/replacements.json`
+- **机型替换**: `devices/<机型代码>/replacements.json` (追加到通用列表)
+
+`replacements.json` 示例:
+```json
+[
+    {
+        "description": "System Overlays",
+        "type": "file",
+        "search_path": "product",
+        "files": ["DevicesOverlay.apk"]
+    },
+    {
+        "description": "Custom Audio",
+        "type": "dir",
+        "search_path": "product",
+        "ensure_exists": true,
+        "files": ["MiSound"]
+    }
+]
+```
+
 ## 前置条件
 
 - Python 3.8+

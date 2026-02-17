@@ -55,6 +55,32 @@ Example `features.json`:
 }
 ```
 
+### Resource Replacements (Files & Dirs)
+
+File and directory replacements (like overlays, audio configs) are managed via `replacements.json`.
+
+- **Common Replacements**: `devices/common/replacements.json`
+- **Device Replacements**: `devices/<device_code>/replacements.json` (Appends to common list)
+
+Example `replacements.json`:
+```json
+[
+    {
+        "description": "System Overlays",
+        "type": "file",
+        "search_path": "product",
+        "files": ["DevicesOverlay.apk"]
+    },
+    {
+        "description": "Custom Audio",
+        "type": "dir",
+        "search_path": "product",
+        "ensure_exists": true,
+        "files": ["MiSound"]
+    }
+]
+```
+
 ## Prerequisites
 
 - Python 3.8+
