@@ -1095,9 +1095,33 @@ class RomModifier:
      
     def _apply_overrides(self):
         self.logger.info("Step 3: Applying Physical Overrides...")
-        override_dir = Path(f"devices/{self.ctx.stock_rom_code}/override/{self.ctx.port_android_version}")
         
+        # 1. Common Overrides for OS3+ (LyraSdkApp fix)
+        self._apply_common_overrides()
+
+        # 2. Device Specific Overrides
+        override_dir = Path(f"devices/{self.ctx.stock_rom_code}/override/{self.ctx.port_android_version}")
         self.ctx.syncer.apply_override(override_dir, self.target_rom_img)
+
+    def _apply_common_overrides(self):
+        """
+        Apply common overrides based on conditions (e.g., OS version)
+        """
+        # Check for OS3.0+
+        # ro.mi.os.version.name usually looks like "OS1.0.5.0.UMCCNXM" or "V14.0.23..."
+        # But HyperOS 2.0/3.0 might be simpler in this property or need parsing.
+        # User said: ro.mi.os.version.name=OS3.0
+        
+        os_version_name = self.ctx.port.get_prop("ro.mi.os.version.name", "")
+        self.logger.info(f"Checking for common overrides. Port OS Version: {os_version_name}")
+        
+        if os_version_name.startswith("OS3"):
+            self.logger.info("Detected HyperOS 3.0+, applying common OS3 fixes...")
+            common_os3_dir = Path("devices/common/override/os3")
+            if common_os3_dir.exists():
+                self.ctx.syncer.apply_override(common_os3_dir, self.target_rom_img)
+            else:
+                self.logger.warning(f"Common OS3 override directory not found at {common_os3_dir}")
 
     def _apply_wild_boost(self):
         self.logger.info("Applying Kernel 5.15 perfmgr (Wild Boost)...")
