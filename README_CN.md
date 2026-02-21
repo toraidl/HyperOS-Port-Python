@@ -1,46 +1,101 @@
-# HyperOS 移植工具 (Python 版)
+# 🚀 HyperOS 移植工具 (Python 版)
 
-**本项目由 gemini pro + opencode + Antigravity 完成，根据 https://github.com/toraidl/hyperos_port 改编而来。**
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-Unlicense-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey.svg)](https://www.ubuntu.com/)
 
-[English](README.md)
+**中文 (Chinese)** | [English](README.md)
 
-这是一个基于 Python 的工具，用于将 HyperOS ROM 移植到各种设备。该工具自动化了移植所需的许多步骤，包括解包、修补、重新打包和签名。
+一个功能强大、自动化的 Python 移植工具，专为小米/红米设备的 HyperOS ROM 移植而设计。该工具涵盖了整个生命周期：解包、智能修补、功能恢复、重新打包和签名。
 
-## 支持机型
+---
 
-- 理论上支持内核版本 5.10 及以上的高通平台小米/红米设备。
-- 具体机型可能需要修改 `devices/<机型代码>/override/` 目录下的文件。
+## 🌟 核心特性
 
-### 已测试成功
+- 🛠️ **全自动化**: 从底包/移植包 ZIP 到最终可刷入 ZIP 的端到端移植流程。
+- 💉 **智能修补**: 自动修改固件、系统、框架和 ROM 属性。
+- 🧬 **GKI 支持**: 针对 GKI 2.0 (5.10+) 及标准 GKI 设备，提供智能 KernelSU 注入。
+- 🧩 **模块化配置**: 通过简单的 JSON 文件开启/关闭功能（AOD、AI 引擎等）。
+- 🌏 **EU 本地化**: 为 Global/EU 底包恢复国内特有功能（NFC、小米钱包、小爱同学）。
+- 📦 **多格式支持**: 支持生成 `payload.bin` (Recovery/OTA) 或 `super.img` (Hybrid/Fastboot) 格式。
+- 🔒 **自动签名**: 自动为最终生成的 ZIP 文件签名，确保无缝安装。
 
-- **底包机型:** 小米 13 (官方 HyperOS 2.0/3.0)
-- **移植包来源:**
-  - 小米 14
-  - 小米 15
-  - 小米 17
+---
+
+## 📱 机型兼容性
+
+### 支持机型
+- 理论上支持内核版本 **5.10 及以上 (GKI 2.0+)** 的 **高通平台** 小米/红米设备。
+- 支持在 `devices/<机型代码>/` 中自定义机型覆盖规则。
+
+### 已验证机型
+- **底包 (Stock):** 小米 13 (HyperOS 2.0/3.0)
+- **移植来源:**
+  - 小米 14 / 15 / 17
   - 红米 K90 / K90 Pro
-  - (支持最新 HyperOS CN 3.0 正式版及测试版)
+  - 支持 HyperOS CN 3.0 正式版及测试版
 
-## 功能特性
+---
 
-- **自动移植**：简化 HyperOS ROM 的移植流程。
-- **固件修改**：包含用于修改固件、系统、框架和 ROM 属性的模块。
-- **APK 修补**：根据需要修补系统 APK。
-- **重新打包**：将修改后的系统重新打包为可刷入的 ZIP 文件。
-- **签名**：为输出的 ZIP 文件签名以供安装。
-- **多设备支持**：可针对不同设备进行配置（参见 `devices/` 目录）。
-- **特性配置**：支持通过 JSON 配置模块化开启/关闭系统特性（如 AOD、AI 引擎等）。
+## ⚙️ 前置条件
 
-## 特性配置 (Feature Configuration)
+- **Python 3.8+**
+- **Linux 环境** (推荐使用 Ubuntu 20.04+)
+- **Sudo 权限** (用于挂载/卸载镜像)
+- **OTA 工具**: 已内置在 `otatools/` 目录中。
 
-本项目使用基于 JSON 的配置系统来管理设备特性和系统属性。
+---
 
-- **通用配置**: `devices/common/features.json`
-  - 定义所有设备通用的特性（例如 PIF 伪装、WildBoost 狂暴引擎）。
-- **机型配置**: `devices/<机型代码>/features.json`
-  - 覆盖通用设置或添加特定机型的属性（例如机型伪装）。
+## 🚀 快速开始
 
-`features.json` 示例：
+### 1. 安装
+```bash
+git clone https://github.com/yourusername/HyperOS-Port-Python.git
+cd HyperOS-Port-Python
+# 安装可选依赖
+pip install -r requirements.txt 
+```
+
+### 2. 基本用法
+准备好底包 (Stock ROM) 和移植包 (Port ROM) 的 ZIP 文件，然后运行：
+
+**OTA/Recovery 模式 (默认):**
+```bash
+sudo python3 main.py --stock <底包路径> --port <移植包路径>
+```
+
+**Hybrid/Fastboot 模式 (Super Image):**
+```bash
+sudo python3 main.py --stock <底包路径> --port <移植包路径> --pack-type super
+```
+
+---
+
+## 🛠️ 参数说明
+
+### 常用命令行参数
+
+| 参数 | 说明 | 默认值 |
+| :--- | :--- | :--- |
+| `--stock` | **(必需)** 底包 (Stock ROM) 路径 | 无 |
+| `--port` | **(必需)** 移植包 (Port ROM) 路径 | 无 |
+| `--pack-type` | 打包格式: `payload` 或 `super` | `payload` |
+| `--ksu` | 注入 KernelSU 到 `init_boot`/`boot` | `false` |
+| `--work-dir` | 解包和修补的工作目录 | `build` |
+| `--clean` | 开始前清理工作目录 | `false` |
+| `--debug` | 开启调试日志 | `false` |
+| `--eu-bundle` | EU 本地化资源包 (ZIP) 的路径或 URL | 无 |
+
+---
+
+## 🔧 配置系统
+
+本项目采用模块化的 JSON 配置系统。
+
+### 1. 特性开关 (`features.json`)
+管理每个设备的系统特性和属性。
+- **位置**: `devices/<机型代码>/features.json`
+
 ```json
 {
     "xml_features": {
@@ -48,158 +103,70 @@
         "support_wild_boost": true
     },
     "build_props": {
-        "product": {
-            "ro.product.spoofed.name": "vermeer"
-        }
+        "product": { "ro.product.spoofed.name": "vermeer" }
     }
 }
 ```
 
-### 资源替换 (Files & Dirs)
-
-文件和目录的替换规则（如 overlays, 音频配置等）通过 `replacements.json` 管理。
-
-- **通用替换**: `devices/common/replacements.json`
-- **机型替换**: `devices/<机型代码>/replacements.json` (追加到通用列表)
-
-`replacements.json` 示例:
+### 2. 资源 overlays (`replacements.json`)
+自动化文件/目录替换（如 overlays、音频配置等）。
 ```json
 [
     {
-        "description": "System Overlays",
+        "description": "系统 Overlays",
         "type": "file",
         "search_path": "product",
         "files": ["DevicesOverlay.apk"]
-    },
-    {
-        "description": "Custom Audio",
-        "type": "dir",
-        "search_path": "product",
-        "ensure_exists": true,
-        "files": ["MiSound"]
     }
 ]
 ```
 
-### 属性模板 (高级)
+---
 
-系统属性和调度器配置也通过 JSON 进行管理：
-- `devices/common/props_global.json`: 定义全局属性模板（构建时间、设备代码等）。
-- `devices/common/scheduler.json`: 定义不同平台（sm8550, sm8450 等）的 CPU 亲和性和调度器设置。
+## 🏮 EU 本地化 (恢复国内功能)
 
-## 前置条件
+为 EU/Global ROM 恢复 **中国国内特有的功能** (NFC, 小米钱包, 小爱同学)，同时保持 "国际版" 伪装。
 
-- Python 3.8+
-- Linux 环境（在 Ubuntu 20.04+ 上测试通过）
-- `otatools`：Android OTA 工具（已包含在 `otatools/` 目录中）。
-  - 这些工具是解包和重新打包 ROM 所必需的。
-- `sudo` 权限（用于挂载/卸载镜像）
-
-## 安装
-
-1. 克隆仓库：
+1. **启用**: 在 `features.json` 中设置 `"enable_eu_localization": true`。
+2. **生成资源包**:
    ```bash
-   git clone https://github.com/yourusername/HyperOS-Port-Python.git
-   cd HyperOS-Port-Python
+   python3 tools/generate_eu_bundle.py --rom <CN_ROM.zip> --config devices/common/eu_bundle_config.json
+   ```
+3. **应用**:
+   ```bash
+   sudo python3 main.py ... --eu-bundle eu_localization_bundle_v1.0.zip
    ```
 
-2. 安装依赖（如果有）：
-   ```bash
-   pip install -r requirements.txt
-   ```
-   *注意：本项目主要使用 Python 标准库，但请检查是否有特定要求。*
+---
 
-3. 设置 `otatools`：
-   - `otatools` 已经包含在仓库中。除非您需要特定版本，否则无需手动下载。
-     ```
-     HyperOS-Port-Python/
-     ├── otatools/
-     │   ├── bin/
-     │   ├── lib64/
-     │   └── ...
-     ├── src/
-     ├── main.py
-     └── ...
-     ```
+## 📂 项目结构
 
-## 使用方法
+```text
+HyperOS-Port-Python/
+├── src/               # 核心 Python 源代码
+│   ├── core/          # 解包、修补、重打包逻辑
+│   ├── modules/       # 专门的修改模块
+│   └── utils/         # Shell 和文件工具
+├── devices/           # 特定机型的配置和 overlay
+├── otatools/          # Android OTA 二进制文件 (bin, lib64)
+├── out/               # 最终生成的 ROM 输出目录
+└── tools/             # 辅助工具 (Bundle 生成器等)
+```
 
-1. 准备您的 Stock ROM（底包）和 Port ROM（移植包）（作为 zip 文件或目录）。
-2. 运行工具：
+---
 
-   **默认模式 (OTA Recovery/Payload.bin):**
-   ```bash
-   sudo python3 main.py --stock <底包路径> --port <移植包路径>
-   ```
-
-   **Hybrid 模式 (Recovery/Fastboot):**
-   ```bash
-   sudo python3 main.py --stock <底包路径> --port <移植包路径> --pack-type super
-   ```
-
-### 参数
-
-- `--stock`：Stock ROM 的路径（设备的基础 ROM）。
-- `--port`：Port ROM 的路径（要移植的 HyperOS ROM）。
-- `--pack-type`：（可选）打包类型：`payload`（默认，适用于 Recovery/OTA）或 `super`（适用于 Hybrid Recovery/Fastboot）。
-- `--ksu`：（可选）将 KernelSU 注入 init_boot。
-- `--work-dir`：（可选）工作目录（默认：`build`）。
-- `--clean`：（可选）开始前清理工作目录。
-- `--debug`：（可选）启用调试日志。
-- `--eu-bundle`: (可选) EU 本地化资源包的路径或 URL。
-
-## EU 本地化 (恢复国内功能)
-
-此功能旨在为 EU/Global ROM 恢复 **中国国内特有的功能**（如 NFC 门卡、小米钱包、小爱同学等），同时保持 "国际版" 伪装以通过安全检查。
-
-### 如何开启
-
-1.  **自动开启**: 如果移植包 (Port ROM) 被识别为 `xiaomi.eu` 版本（基于文件名或构建主机名），本地化属性将自动应用。
-2.  **手动开启**: 在您的 `devices/<机型代码>/features.json` 中添加 `"enable_eu_localization": true`。
-
-### 如何应用应用包 (智能替换)
-
-为了注入实际的国内版应用（由于体积过大未包含在 git 中），您需要生成并提供一个 **资源包 (Bundle)**。
-
-1.  **制作资源包**:
-    *   准备一个“供体” CN ROM（例如官方 HyperOS CN zip）。
-    *   运行生成工具：
-    ```bash
-    # 使用默认配置: devices/common/eu_bundle_config.json
-    python3 tools/generate_eu_bundle.py --rom <CN_ROM路径.zip> --config devices/common/eu_bundle_config.json
-    ```
-    *   输出: `eu_localization_bundle_v1.0.zip`
-
-2.  **在移植时应用**:
-    ```bash
-    sudo python3 main.py ... --eu-bundle eu_localization_bundle_v1.0.zip
-    ```
-    *工具将自动删除冲突的国际版应用，并注入资源包中的国内版应用。*
-
-## 目录结构
-
-- `src/`：工具的源代码。
-  - `core/`：核心逻辑（修补、重打包、ROM 处理）。
-  - `modules/`：针对系统不同部分的特定模块。
-  - `utils/`：实用脚本（Shell 执行、文件操作）。
-- `devices/`：特定设备的配置和覆盖文件。
-- `otatools/`：操作所需的 Android OTA 工具。
-- `out/`：生成的 ROM 的输出目录。
-
-## 贡献
-
-欢迎贡献！请 fork 仓库并提交 pull request。
-
-## 致谢
+## 🤝 特别鸣谢
 
 本项目大部分由 **Gemini Pro 3** 协助开发完成。
 
-特别感谢：
-1. https://github.com/ReChronoRain/HyperCeiler/
-2. https://github.com/Danda420/OemPorts10T-PIF
-3. https://github.com/FrameworksForge/FrameworkPatcher
-4. xiaomi.eu
+**特别感谢:**
+- [HyperCeiler](https://github.com/ReChronoRain/HyperCeiler/)
+- [OemPorts10T-PIF](https://github.com/Danda420/OemPorts10T-PIF)
+- [FrameworkPatcher](https://github.com/FrameworksForge/FrameworkPatcher)
+- [xiaomi.eu](https://xiaomi.eu)
 
-## 许可证
+---
 
-本项目基于 [Unlicense](LICENSE) 发布。完全免费，可以任意复制。
+## 📜 许可证
+
+基于 [Unlicense](LICENSE) 发布。完全免费，可任意用于任何用途。
