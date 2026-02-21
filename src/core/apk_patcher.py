@@ -20,6 +20,7 @@ class AppPatcher:
             "MIUIPackageInstaller.apk": "src.modules.installer.InstallerModule",
             "PowerKeeper.apk": "src.modules.powerkeeper.PowerKeeperModule",
             "MiuiGuardProvider.apk": "src.modules.guard.GuardModule",
+            "DevicesAndroidOverlay.apk": "src.modules.devices_overlay.DevicesOverlayModule",
         }
 
     def run(self):
