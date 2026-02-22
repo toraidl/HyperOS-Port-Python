@@ -65,6 +65,7 @@ class SystemModifier:
         
         self._fix_vndk_apex()
         self._fix_vintf_manifest()
+        self._fix_voice_trigger()
         
         # 7. Apply EU Localization (if enabled/bundle provided)
         if getattr(self.ctx, "is_port_eu_rom", False) and getattr(self.ctx, "eu_bundle", None):
@@ -603,6 +604,50 @@ class SystemModifier:
             self.logger.info(f"Injected VNDK {vndk_version} into {target_xml.name} (Text Mode)")
         else:
             self.logger.error("Invalid manifest.xml: No </manifest> tag found.")
+
+    def _fix_voice_trigger(self):
+        """
+        Fix VoiceTrigger crash on older Android versions (< 16) by moving it
+        from product/app to system_ext/app due to linker issues.
+        """
+        # Check Stock ROM Android Version
+        try:
+            # Handle potential non-integer version strings gracefully
+            version_str = getattr(self.ctx, "base_android_version", "0")
+            if "." in version_str:
+                version_str = version_str.split(".")[0]
+            base_version = int(version_str)
+        except (ValueError, TypeError):
+            self.logger.warning(f"Could not parse Android version '{version_str}', defaulting to 0.")
+            base_version = 0
+
+        if base_version >= 16:
+            return
+
+        self.logger.info("Checking VoiceTrigger for Android < 16 fix...")
+        
+        product_voice_trigger = self.ctx.target_dir / "product/app/VoiceTrigger"
+        system_ext_app_dir = self.ctx.target_dir / "system_ext/app"
+        
+        if product_voice_trigger.exists():
+            self.logger.info("Moving VoiceTrigger from product to system_ext...")
+            
+            target_voice_trigger = system_ext_app_dir / "VoiceTrigger"
+            
+            # Ensure parent exists
+            system_ext_app_dir.mkdir(parents=True, exist_ok=True)
+            
+            if target_voice_trigger.exists():
+                self.logger.warning(f"Target {target_voice_trigger} already exists. Removing old one.")
+                shutil.rmtree(target_voice_trigger)
+            
+            try:
+                shutil.move(str(product_voice_trigger), str(target_voice_trigger))
+                self.logger.info("VoiceTrigger moved successfully.")
+            except Exception as e:
+                self.logger.error(f"Failed to move VoiceTrigger: {e}")
+        else:
+            self.logger.debug("VoiceTrigger not found in product/app, skipping.")
 
 class FrameworkModifier:
     def __init__(self, context):
