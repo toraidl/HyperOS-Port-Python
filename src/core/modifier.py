@@ -609,10 +609,10 @@ class SystemModifier:
         """
         Fix VoiceTrigger crash on older Android versions (< 16) by moving it
         from product/app to system_ext/app due to linker issues.
+        Logic: Use Stock (Old Model) VoiceTrigger -> Install to system_ext -> Remove Port's Product one
         """
         # Check Stock ROM Android Version
         try:
-            # Handle potential non-integer version strings gracefully
             version_str = getattr(self.ctx, "base_android_version", "0")
             if "." in version_str:
                 version_str = version_str.split(".")[0]
@@ -626,28 +626,38 @@ class SystemModifier:
 
         self.logger.info("Checking VoiceTrigger for Android < 16 fix...")
         
-        product_voice_trigger = self.ctx.target_dir / "product/app/VoiceTrigger"
-        system_ext_app_dir = self.ctx.target_dir / "system_ext/app"
+        # Source: Stock ROM product/app/VoiceTrigger
+        stock_voice_trigger = self.ctx.stock.extracted_dir / "product/app/VoiceTrigger"
         
-        if product_voice_trigger.exists():
-            self.logger.info("Moving VoiceTrigger from product to system_ext...")
+        # Target Destinations
+        target_system_ext_vt = self.ctx.target_dir / "system_ext/app/VoiceTrigger"
+        target_product_vt = self.ctx.target_dir / "product/app/VoiceTrigger"
+
+        if stock_voice_trigger.exists():
+            self.logger.info("Restoring Stock VoiceTrigger to system_ext (Fix for Android < 16)...")
             
-            target_voice_trigger = system_ext_app_dir / "VoiceTrigger"
+            # 1. Prepare Destination (system_ext)
+            if not target_system_ext_vt.parent.exists():
+                target_system_ext_vt.parent.mkdir(parents=True, exist_ok=True)
             
-            # Ensure parent exists
-            system_ext_app_dir.mkdir(parents=True, exist_ok=True)
+            if target_system_ext_vt.exists():
+                shutil.rmtree(target_system_ext_vt)
             
-            if target_voice_trigger.exists():
-                self.logger.warning(f"Target {target_voice_trigger} already exists. Removing old one.")
-                shutil.rmtree(target_voice_trigger)
-            
+            # 2. Copy Stock -> Target SystemExt
             try:
-                shutil.move(str(product_voice_trigger), str(target_voice_trigger))
-                self.logger.info("VoiceTrigger moved successfully.")
+                shutil.copytree(stock_voice_trigger, target_system_ext_vt, dirs_exist_ok=True)
+                self.logger.info(f"Copied VoiceTrigger to {target_system_ext_vt.relative_to(self.ctx.target_dir)}")
             except Exception as e:
-                self.logger.error(f"Failed to move VoiceTrigger: {e}")
+                self.logger.error(f"Failed to copy VoiceTrigger: {e}")
+                return
+
+            # 3. Clean up Target Product (Remove Port's VoiceTrigger)
+            if target_product_vt.exists():
+                self.logger.info("Removing conflicting VoiceTrigger from product/app...")
+                shutil.rmtree(target_product_vt)
+                
         else:
-            self.logger.debug("VoiceTrigger not found in product/app, skipping.")
+            self.logger.warning("Stock VoiceTrigger not found in product/app. Skipping fix.")
 
 class FrameworkModifier:
     def __init__(self, context):
