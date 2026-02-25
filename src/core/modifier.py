@@ -228,7 +228,7 @@ class SystemModifier:
         if "target" in rule:
             target_dir = target_dir / rule["target"]
             
-        self.logger.info(f"  Unzipping {source_zip.name} to {target_dir}")
+        self.logger.debug(f"    [Unzip] {source_zip.name} -> {target_dir.relative_to(self.ctx.target_dir)}")
         with zipfile.ZipFile(source_zip, 'r') as z:
             z.extractall(target_dir)
 
@@ -245,7 +245,7 @@ class SystemModifier:
         if not target.parent.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             
-        self.logger.info(f"  Copying internal: {rule['source']} -> {rule['target']}")
+        self.logger.debug(f"    [Copy Internal] {rule['source']} -> {rule['target']}")
         if source.is_dir():
             shutil.copytree(source, target, dirs_exist_ok=True)
         else:
@@ -312,13 +312,18 @@ class SystemModifier:
                         target_item.parent.mkdir(parents=True, exist_ok=True)
                     
                     if target_item.exists():
+                        self.logger.debug(f"    [Replace] {src_item.relative_to(stock_root)} -> {target_item.relative_to(target_root)}")
                         if target_item.is_dir(): shutil.rmtree(target_item)
                         else: target_item.unlink()
+                    else:
+                        self.logger.debug(f"    [Add New] {src_item.relative_to(stock_root)} -> {target_item.relative_to(target_root)}")
                     
                     if src_item.is_dir():
                         shutil.copytree(src_item, target_item, symlinks=True, dirs_exist_ok=True)
                     else:
                         shutil.copy2(src_item, target_item)
+                else:
+                    self.logger.debug(f"    [Skip] {src_item.name} (Target missing and ensure_exists=False)")
 
     def _load_replacement_config(self):
         """Deprecated in favor of _load_merged_config"""
