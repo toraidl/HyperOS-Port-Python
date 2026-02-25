@@ -233,8 +233,8 @@ class ConfigMerger:
         Load and merge multiple configuration files.
         
         Args:
-            paths: List of paths to load (in order: common -> chipset -> target)
-            filename: Name of the config file for reporting
+            paths: List of directory paths to scan
+            filename: Name of the config file to load from each directory
         
         Returns:
             Tuple of (merged_config, merge_report)
@@ -243,30 +243,31 @@ class ConfigMerger:
         config = {}
         
         for p in paths:
-            if p.exists():
+            file_path = p / filename
+            if file_path.exists():
                 try:
-                    with open(p, 'r') as f:
+                    with open(file_path, 'r') as f:
                         data = json.load(f)
                     
-                    self.report.loaded_files.append(str(p))
+                    self.report.loaded_files.append(str(file_path))
                     
                     if not config:
                         config = data
                     else:
-                        config = self.merge(config, data, str(p))
+                        config = self.merge(config, data, str(file_path))
                     
-                    self._log("info", f"Loaded and merged config from {p}")
+                    self._log("info", f"Loaded and merged config from {file_path}")
                 except json.JSONDecodeError as e:
-                    error_msg = f"Invalid JSON in {p}: {e}"
+                    error_msg = f"Invalid JSON in {file_path}: {e}"
                     self.report.errors.append(error_msg)
                     self._log("error", error_msg)
                 except Exception as e:
-                    error_msg = f"Failed to load config {p}: {e}"
+                    error_msg = f"Failed to load config {file_path}: {e}"
                     self.report.errors.append(error_msg)
                     self._log("error", error_msg)
             else:
-                self.report.missing_files.append(str(p))
-                self._log("debug", f"Config file not found: {p} (this may be expected)")
+                self.report.missing_files.append(str(file_path))
+                self._log("debug", f"Config file not found: {file_path} (this may be expected)")
         
         # Extract merged keys
         if config:
