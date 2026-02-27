@@ -81,6 +81,28 @@
             "match_mode": "exact",
             "ensure_exists": true,
             "files": ["MiuiCamera"]
+        },
+        {
+            "description": "Fix Face ID for OS3.0.300+ on A15",
+            "id": "fix_face_id_os3",
+            "type": "copy_local",
+            "source": "devices/common/Pearl_OS3_Biometric.apk",
+            "target": "Biometric.apk",
+            "condition_port_os_version_incremental_gte": "OS3.0.300",
+            "condition_base_android_version_gte": 15,
+            "condition_base_android_version_lt": 16
+        },
+        {
+            "description": "Fix VoiceTrigger for OS3.0+ on A15",
+            "id": "fix_voice_trigger_os3",
+            "type": "file",
+            "search_path": "product",
+            "match_mode": "recursive",
+            "ensure_exists": true,
+            "files": ["VoiceTrigger"],
+            "condition_port_os_version_incremental_gte": "OS3.0.0",
+            "condition_base_android_version_gte": 15,
+            "condition_base_android_version_lt": 16
         }
     ]
 }
