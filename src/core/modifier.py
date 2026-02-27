@@ -1015,11 +1015,11 @@ class FrameworkModifier:
 
         self._run_smalikit(path=str(wd), iname="ApkSignatureVerifier.smali", method="getMinimumSignatureSchemeVersionForTargetSdk", remake=self.RETRUN_TRUE)
 
-        pif_zip = Path("devices/common/pif_patch.zip")
+        pif_zip = Path("devices/common/pif_patch_v2.zip")
         if pif_zip.exists():
             self._apply_pif_patch(wd, pif_zip)
         else:
-            self.logger.warning("pif_patch.zip not found, skipping PIF injection.")
+            self.logger.warning("pif_patch_v2.zip not found, skipping PIF injection.")
 
         target_file = self._find_file_recursive(wd, "PendingIntent.smali")
         if target_file:
@@ -1034,7 +1034,7 @@ class FrameworkModifier:
         # ==========================================
         self._inject_hook_helper_methods(wd)
 
-        # [Patch] Fix Face ID / Voice Trigger for A16 (SoundTrigger$RecognitionConfig)
+        # [Patch] Fix Voice Trigger for A16 (SoundTrigger$RecognitionConfig)
         if int(self.ctx.port_android_version) >= 16:
             st_config = self._find_file_recursive(wd, "SoundTrigger$RecognitionConfig.smali")
             if st_config:
@@ -1200,30 +1200,69 @@ class FrameworkModifier:
                 if reg:
                     patch_code = f"    invoke-static {{{reg}}}, Lcom/android/internal/util/PropsHookUtils;->setProps(Landroid/content/Context;)V\n    invoke-static {{{reg}}}, Lcom/android/internal/util/danda/OemPorts10TUtils;->onNewApplication(Landroid/content/Context;)V"
                     self._run_smalikit(file_path=str(inst_smali), method=method2, before_line=["return-object", patch_code])
-
         keystore_smali = self._find_file_recursive(work_dir, "AndroidKeyStoreSpi.smali")
         if keystore_smali:
+            self.logger.info("Hooking AndroidKeyStoreSpi...")
             self._run_smalikit(file_path=str(keystore_smali), method="engineGetCertificateChain", 
                                insert_line=["2", "    invoke-static {}, Lcom/android/internal/util/danda/OemPorts10TUtils;->onEngineGetCertificateChain()V"])
+   
+        # New hooks from patchframework.sh (KeyStore2 and KeyStoreSecurityLevel)
+        keystore2_smali = self._find_file_recursive(work_dir, "KeyStore2.smali")
+        if keystore2_smali:
+            self.logger.info("Hooking KeyStore2...")
+            content = keystore2_smali.read_text(encoding='utf-8')
             
-            content = keystore_smali.read_text(encoding='utf-8')
-            aput_matches = list(re.finditer(r"aput-object\s+([vp]\d+),\s+([vp]\d+),\s+([vp]\d+)", content))
-            if aput_matches:
-                pattern = re.compile(r"(\.method.+engineGetCertificateChain.+?\.end method)", re.DOTALL)
-                match = pattern.search(content)
-                if match:
-                    body = match.group(1)
-                    inner_aputs = list(re.finditer(r"aput-object\s+([vp]\d+),\s+([vp]\d+),\s+([vp]\d+)", body))
-                    if inner_aputs:
-                        last_aput = inner_aputs[-1]
-                        array_reg = last_aput.group(2)
-                        
-                        spoof_code = f"\n    invoke-static {{{array_reg}}}, Lcom/android/internal/util/danda/OemPorts10TUtils;->genCertificateChain([Ljava/security/cert/Certificate;)[Ljava/security/cert/Certificate;\n    move-result-object {array_reg}\n"
-                        
-                        old_line = last_aput.group(0)
-                        new_body = body.replace(old_line, old_line + spoof_code)
-                        content = content.replace(body, new_body)
-                        keystore_smali.write_text(content, encoding='utf-8')
+            # 1. onDeleteKey hook
+            delete_key_name = "deleteKey"
+            reg = self._extract_register_from_local(content, delete_key_name, '"descriptor"') or "p1"
+            
+            # Use \$+ to match one or more literal '$' signs (e.g., $ or $$)
+            on_delete_patch = rf"    invoke-static {{{reg}}}, Lcom/android/internal/util/danda/OemPorts10TUtils;->onDeleteKey(Landroid/system/keystore2/KeyDescriptor;)V\n\n    \1"
+            self._run_smalikit(file_path=str(keystore2_smali), method=delete_key_name, 
+                               regex_replace=(r"(new-instance\s+.*?, Landroid/security/KeyStore2\$+ExternalSyntheticLambda.*)", on_delete_patch))
+
+            # 2. onGetKeyEntry hook
+            get_key_entry_name = "getKeyEntry"
+            reg = self._extract_register_from_local(content, get_key_entry_name, '"descriptor"') or "p1"
+            
+            on_get_key_patch = rf"    invoke-static {{p0, v0, {reg}}}, Lcom/android/internal/util/danda/OemPorts10TUtils;->onGetKeyEntry(Ljava/lang/Object;Ljava/lang/Object;Landroid/system/keystore2/KeyDescriptor;)Landroid/system/keystore2/KeyEntryResponse;\n    move-result-object {reg}\n    if-eqz {reg}, :cond_skip_spoofing\n    return-object {reg}\n    :cond_skip_spoofing\n\n    \1"
+            self._run_smalikit(file_path=str(keystore2_smali), method=get_key_entry_name,
+                               regex_replace=(r"(invoke-virtual\s+.*?, Landroid/security/KeyStore2;->handleRemoteExceptionWithRetry.*)", on_get_key_patch))
+
+        keystore_lvl_smali = self._find_file_recursive(work_dir, "KeyStoreSecurityLevel.smali")
+        if keystore_lvl_smali:
+            self.logger.info("Hooking KeyStoreSecurityLevel...")
+            content = keystore_lvl_smali.read_text(encoding='utf-8')
+            gen_key_name = "generateKey"
+            
+            # Find the method body to extract registers used in Lambda init
+            method_pattern = re.compile(rf"\.method[^\n]*?{gen_key_name}(.*?)\.end method", re.DOTALL)
+            m = method_pattern.search(content)
+            
+            desc_reg, args_reg, ret_reg = "p1", "p3", "v0" # Safe defaults
+            
+            if m:
+                body = m.group(1)
+                # 1. Extract registers from invoke-direct/range {v0 .. vX}
+                # In your code: invoke-direct/range {v0 .. v6}, ...KeyStoreSecurityLevel$$ExternalSyntheticLambda2;-><init>
+                range_match = re.search(r"invoke-direct\/range\s+{(?P<start>[vp]\d+)\s+\.\.\s+(?P<end>[vp]\d+)}", body)
+                if range_match:
+                    start_reg = range_match.group("start") # e.g., v0
+                    start_prefix = start_reg[0]
+                    start_num = int(start_reg[1:])
+                    
+                    # Based on your smali: v0=lambda, v1=this, v2=descriptor(p1), v4=args(p3)
+                    desc_reg = f"{start_prefix}{start_num + 2}" # v0 + 2 = v2
+                    args_reg = f"{start_prefix}{start_num + 4}" # v0 + 4 = v4
+                    self.logger.info(f"  -> Extracted registers from range: desc={desc_reg}, args={args_reg}")
+                
+                # 2. Extract return register
+                ret_match = re.search(r"return-object\s+([vp]\d+)", body)
+                if ret_match: ret_reg = ret_match.group(1)
+
+            gen_cert_patch = rf"    invoke-static {{p0, v0, {desc_reg}, {args_reg}}}, Lcom/android/internal/util/danda/OemPorts10TUtils;->genCertificate(Ljava/lang/Object;Ljava/lang/Object;Landroid/system/keystore2/KeyDescriptor;Ljava/util/Collection;)Landroid/system/keystore2/KeyMetadata;\n    move-result-object {ret_reg}\n    if-eqz {ret_reg}, :cond_skip_spoofing\n    return-object {ret_reg}\n    :cond_skip_spoofing\n\n    \1"
+            self._run_smalikit(file_path=str(keystore_lvl_smali), method=gen_key_name,
+                               regex_replace=(r"(invoke-direct\s+.*?, Landroid/security/KeyStoreSecurityLevel;->handleExceptions.*)", gen_cert_patch))
 
         app_pm_smali = self._find_file_recursive(work_dir, "ApplicationPackageManager.smali")
         if app_pm_smali:
@@ -1340,6 +1379,40 @@ class FrameworkModifier:
         else:
             self.logger.warning(f"arg_index {arg_index} out of bounds for registers: {reg_list}")
             return None
+
+    def _extract_register_from_local(self, content: str, method_signature: str, local_name: str) -> str | None:
+        """
+        Extract register name from .local declaration or move-object instructions.
+        """
+        method_pattern = re.compile(
+            rf"\.method[^\n]*?{re.escape(method_signature)}(.*?)\.end method", 
+            re.DOTALL
+        )
+        method_match = method_pattern.search(content)
+        if not method_match:
+            return None
+            
+        body = method_match.group(1)
+        
+        # 1. Try .local declaration first
+        # Match .local reg, "name":TYPE or .local reg, "name", TYPE
+        local_pattern = re.compile(rf'\.local\s+([vp]\d+),\s+{re.escape(local_name)}[;:,]')
+        match = local_pattern.search(body)
+        if match:
+            return match.group(1)
+            
+        # 2. Fallback: If it's "descriptor" or "args", try to find move-object from p1/p3
+        # This is common in optimized dex where params are moved to locals
+        if local_name == '"descriptor"':
+            # Match move-object v2, p1
+            move_match = re.search(r"move-object(?:\/from16)?\s+([vp]\d+),\s+p1", body)
+            if move_match: return move_match.group(1)
+        elif local_name == '"args"':
+            # Match move-object v4, p3
+            move_match = re.search(r"move-object(?:\/from16)?\s+([vp]\d+),\s+p3", body)
+            if move_match: return move_match.group(1)
+            
+        return None
 
     def _inject_xeu_toolbox(self):
         xeu_zip = Path("devices/common/xeutoolbox.zip")
