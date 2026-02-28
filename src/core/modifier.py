@@ -10,6 +10,7 @@ import tempfile
 import urllib
 import zipfile
 from src.utils.shell import ShellRunner
+from src.utils.download import AssetDownloader
 import urllib.request
 from urllib.error import URLError
 import subprocess
@@ -44,6 +45,7 @@ class SystemModifier:
         self.ctx = context
         self.logger = logging.getLogger("Modifier")
         self.shell = ShellRunner()
+        self.downloader = AssetDownloader()
         
         self.bin_dir = Path("bin").resolve()
         self.apktool = self.bin_dir / "apktool.jar"
@@ -345,8 +347,10 @@ class SystemModifier:
             matching_zip = Path(f"devices/common/wild_boost_{kernel_version}.zip")
         
         if not matching_zip.exists():
-            self.logger.error(f"Wild boost zip not found: {matching_zip}")
-            return
+            # Try to download if missing
+            if not self.downloader.download_if_missing(matching_zip):
+                self.logger.error(f"Wild boost zip not found and download failed: {matching_zip}")
+                return
         
         self.logger.info(f"Using wild_boost package: {matching_zip.name}")
         
@@ -582,8 +586,10 @@ class SystemModifier:
         # source is relative to project root, target is relative to target_dir
         source = Path(rule["source"])
         if not source.exists():
-            self.logger.warning(f"  Local source not found: {rule['source']}")
-            return
+            # Try to download from GitHub assets if not found locally
+            if not self.downloader.download_if_missing(source):
+                self.logger.warning(f"  Local source not found and download failed: {rule['source']}")
+                return
 
         target_val = rule["target"]
         target_files = []
