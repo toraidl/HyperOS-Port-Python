@@ -1,41 +1,4 @@
 {
-    "replacements": [
-        {
-            "id": "fuxi_wild_boost",
-            "description": "Fuxi Wild Boost Performance Patch",
-            "type": "unzip_override",
-            "source": "devices/common/wild_boost_5.15.zip",
-            "target": "."
-        },
-        {
-            "id": "fuxi_wild_boost_load",
-            "description": "Fuxi Wild Boost modules.load",
-            "type": "append_text",
-            "target": "vendor_dlkm/lib/modules/modules.load",
-            "text": "perfmgr.ko"
-        },
-        {
-            "id": "fuxi_wild_boost_dep",
-            "description": "Fuxi Wild Boost modules.dep",
-            "type": "append_text",
-            "target": "vendor_dlkm/lib/modules/modules.dep",
-            "text": "/vendor/lib/modules/perfmgr.ko:"
-        },
-        {
-            "id": "fuxi_hexpatch_libmigui",
-            "description": "Fuxi HexPatch libmigui.so for Spoofing",
-            "type": "hexpatch",
-            "target": "libmigui.so",
-            "patches": [
-                {
-                    "old": "726F2E70726F647563742E70726F647563742E6E616D65",
-                    "new": "726F2E70726F647563742E73706F6F6665642E6E616D65"
-                },
-                {
-                    "old": "726F2E70726F647563742E646576696365",
-                    "new": "726F2E73706F6F6665642E646576696365"
-                }
-            ]
-        }
-    ]
+    "_comment": "Fuxi 设备文件替换配置",
+    "replacements": []
 }
