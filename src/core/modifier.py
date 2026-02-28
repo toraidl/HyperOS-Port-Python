@@ -16,6 +16,7 @@ import subprocess
 
 from src.utils.smalikit import SmaliKit
 from src.core.config_merger import ConfigMerger
+from src.core.config_loader import load_device_config
 from src.core.conditions import ConditionEvaluator, BuildContext
 
 class SmaliArgs:
@@ -103,29 +104,435 @@ class SystemModifier:
 
     def run(self):
         self.logger.info("Starting System Modification...")
-        
+
         self.temp_dir.mkdir(parents=True, exist_ok=True)
-        
+
         try:
             self.android_version = int(self.ctx.port.get_prop("ro.build.version.release", "14"))
         except:
             self.android_version = 14
-        
+
+        # Load device configuration
+        self.device_config = load_device_config(self.ctx.stock_rom_code, self.logger)
+
         # Order matters!
+        # 1. Install wild_boost BEFORE config migration (if enabled)
+        self._process_wild_boost()
+        
+        # 2. Process file replacements
         self._process_replacements()
         self._migrate_configs()
-        # Unlock features AFTER config migration, otherwise changes to XMLs are lost
-        self._unlock_device_features()
         
+        # 3. Unlock features AFTER config migration
+        self._unlock_device_features()
+
         self._fix_vndk_apex()
         self._fix_vintf_manifest()
-        # self._fix_voice_trigger()
-        
-        # 7. Apply EU Localization (if enabled/bundle provided)
+
+        # 4. Apply EU Localization (if enabled/bundle provided)
         if getattr(self.ctx, "is_port_eu_rom", False) and getattr(self.ctx, "eu_bundle", None):
             self._apply_eu_localization()
 
         self.logger.info("System Modification Completed.")
+
+    def _get_kernel_version(self) -> str:
+        """
+        Get kernel version from boot image.
+        Returns kernel version string like '5.15', '5.10', etc.
+        """
+        boot_img = self.ctx.repack_images_dir / "boot.img"
+        if not boot_img.exists():
+            self.logger.warning("boot.img not found, cannot detect kernel version.")
+            return "unknown"
+
+        kmi = self._analyze_kmi(boot_img)
+        if kmi:
+            # kmi format: android14-5.15, extract version part
+            match = re.search(r'(\d+\.\d+)', kmi)
+            if match:
+                return match.group(1)
+        return "unknown"
+
+    def _analyze_kmi(self, boot_img):
+        """
+        Analyze kernel image to extract KMI (Kernel Module Interface) version.
+        """
+        with tempfile.TemporaryDirectory(prefix="ksu_kmi_") as tmp:
+            tmp_path = Path(tmp)
+            shutil.copy(boot_img, tmp_path / "boot.img")
+
+            try:
+                self.shell.run([str(self.ctx.tools.magiskboot), "unpack", "boot.img"], cwd=tmp_path)
+            except Exception:
+                return None
+
+            kernel_file = tmp_path / "kernel"
+            if not kernel_file.exists():
+                return None
+
+            try:
+                with open(kernel_file, 'rb') as f:
+                    content = f.read()
+
+                strings = []
+                current = []
+                for b in content:
+                    if 32 <= b <= 126:
+                        current.append(chr(b))
+                    else:
+                        if len(current) >= 4:
+                            strings.append("".join(current))
+                        current = []
+
+                pattern = re.compile(r'(?:^|\s)(\d+\.\d+)\S*(android\d+)')
+                for s in strings:
+                    if "Linux version" in s or "android" in s:
+                        match = pattern.search(s)
+                        if match:
+                            return f"{match.group(2)}-{match.group(1)}"
+            except Exception:
+                pass
+        return None
+
+    def _is_valid_cpio(self, cpio_path: Path) -> bool:
+        """
+        Check if file has valid CPIO header.
+        CPIO magic: '070701' (new ASCII) or '070702' (new CRC)
+        """
+        if not cpio_path.exists():
+            return False
+        
+        try:
+            with open(cpio_path, 'rb') as f:
+                magic = f.read(6)
+            # CPIO new ASCII format starts with '070701'
+            return magic in [b'070701', b'070702', b'\x71\xc7', b'\xc7\x71']
+        except Exception:
+            return False
+
+    def _process_wild_boost(self):
+        """
+        Process wild_boost installation based on device configuration.
+        Reads config from devices/<codename>/config.json
+        """
+        wild_boost_cfg = self.device_config.get("wild_boost", {})
+        
+        if not wild_boost_cfg.get("enable", False):
+            self.logger.info("Wild Boost is disabled in configuration.")
+            return
+        
+        self.logger.info("Wild Boost is enabled...")
+        
+        # 1. Install kernel modules (automatically finds zip in devices/common)
+        self._install_wild_boost_kernel_modules()
+        
+        # 2. Apply HexPatch to libmigui.so for device spoofing
+        hexpatch_success = self._apply_libmigui_hexpatch()
+        
+        # 3. Fallback: Add persist.sys.feas.enable=true if HexPatch not applied
+        if not hexpatch_success:
+            self.logger.info("HexPatch not applied (libmigui.so not found or already patched).")
+            self.logger.info("Adding persist.sys.feas.enable=true as fallback...")
+            self._add_feas_property()
+
+    def _add_feas_property(self):
+        """
+        Add persist.sys.feas.enable=true to mi_ext/etc/build.prop.
+        This property enables wild_boost on newer systems without HexPatch.
+        """
+        target_dir = self.ctx.target_dir
+        prop_file = target_dir / "mi_ext" / "etc" / "build.prop"
+        
+        # Create mi_ext directory if not exists
+        prop_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Read existing content or create new
+        if prop_file.exists():
+            content = prop_file.read_text(encoding='utf-8', errors='ignore')
+            lines = content.splitlines()
+        else:
+            lines = []
+            content = ""
+        
+        # Check if property already exists
+        if "persist.sys.feas.enable=true" in content:
+            self.logger.info("persist.sys.feas.enable=true already exists.")
+            return
+        
+        # Add property
+        lines.append("persist.sys.feas.enable=true")
+        prop_file.write_text("\n".join(lines) + "\n", encoding='utf-8')
+        self.logger.info("Added persist.sys.feas.enable=true to mi_ext/build.prop")
+    
+    def _apply_libmigui_hexpatch(self):
+        """
+        Apply HexPatch to libmigui.so for device spoofing.
+        Returns True if patch was applied, False if not needed/failed.
+        """
+        self.logger.info("Applying HexPatch to libmigui.so...")
+        
+        # Find libmigui.so in target directory
+        target_dir = self.ctx.target_dir
+        libmigui_files = list(target_dir.rglob("libmigui.so"))
+        
+        if not libmigui_files:
+            self.logger.debug("libmigui.so not found, HexPatch skipped.")
+            return False
+        
+        # Hex patches for property name spoofing
+        patches = [
+            {
+                "old": "726F2E70726F647563742E70726F647563742E6E616D65",  # ro.product.product.name
+                "new": "726F2E70726F647563742E73706F6F6665642E6E616D65"   # ro.product.spoofed.name
+            },
+            {
+                "old": "726F2E70726F647563742E646576696365",  # ro.product.device
+                "new": "726F2E73706F6F6665642E646576696365"   # ro.spoofed.device
+            }
+        ]
+        
+        patched_count = 0
+        for libmigui in libmigui_files:
+            try:
+                content = libmigui.read_bytes()
+                modified = False
+                
+                for patch in patches:
+                    old_bytes = bytes.fromhex(patch["old"])
+                    new_bytes = bytes.fromhex(patch["new"])
+                    
+                    if old_bytes in content:
+                        content = content.replace(old_bytes, new_bytes)
+                        modified = True
+                        self.logger.debug(f"  Patched: {libmigui.relative_to(target_dir)}")
+                
+                if modified:
+                    libmigui.write_bytes(content)
+                    patched_count += 1
+                else:
+                    self.logger.debug(f"  Already patched or no match: {libmigui.relative_to(target_dir)}")
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to patch {libmigui}: {e}")
+        
+        if patched_count > 0:
+            self.logger.info(f"HexPatch applied to {patched_count} libmigui.so file(s).")
+            return True
+        else:
+            self.logger.debug("No files were patched.")
+            return False
+
+    def _install_wild_boost_kernel_modules(self, custom_source: Path = None):
+        """
+        Handle kernel module installation.
+        If custom_source is provided (from replacements.json), use its directory and prefix.
+        Otherwise, default to devices/common/wild_boost_{version}.zip
+        """
+        kernel_version = self._get_kernel_version()
+        self.logger.info(f"Detected kernel version: {kernel_version}")
+        
+        if kernel_version == "unknown":
+            self.logger.error("Cannot detect kernel version, wild_boost modules skipped.")
+            return
+        
+        # Determine the zip path
+        if custom_source:
+            zip_dir = custom_source.parent
+            base_name = custom_source.stem
+            matching_zip = zip_dir / f"{base_name}_{kernel_version}.zip"
+        else:
+            # Default location
+            matching_zip = Path(f"devices/common/wild_boost_{kernel_version}.zip")
+        
+        if not matching_zip.exists():
+            self.logger.error(f"Wild boost zip not found: {matching_zip}")
+            return
+        
+        self.logger.info(f"Using wild_boost package: {matching_zip.name}")
+        
+        with tempfile.TemporaryDirectory(prefix="wild_boost_") as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with zipfile.ZipFile(matching_zip, 'r') as z:
+                z.extractall(tmp_path)
+            
+            ko_files = list(tmp_path.rglob("*.ko"))
+            if not ko_files:
+                self.logger.error("No kernel modules (*.ko) found in zip.")
+                return
+            
+            self.logger.info(f"Found {len(ko_files)} modules to install: {[f.name for f in ko_files]}")
+            
+            # Auto-detect installation location
+            vendor_dlkm_dir = self.ctx.target_dir / "vendor_dlkm"
+            
+            if kernel_version == "5.10":
+                self._install_wild_boost_vendor_boot(ko_files)
+            elif vendor_dlkm_dir.exists():
+                self._install_wild_boost_vendor_dlkm(ko_files)
+            else:
+                self.logger.error("No suitable location (vendor_boot/vendor_dlkm) for wild_boost.")
+    
+    def _install_wild_boost_vendor_boot(self, ko_files):
+        """
+        Install wild_boost modules to vendor_boot ramdisk.
+        """
+        self.logger.info(f"Installing {len(ko_files)} modules to vendor_boot ramdisk...")
+        
+        vendor_boot_img = self.ctx.repack_images_dir / "vendor_boot.img"
+        if not vendor_boot_img.exists():
+            self.logger.error("vendor_boot.img not found.")
+            return
+        
+        # Create temp directory for unpacking
+        work_dir = self.ctx.target_dir.parent / "temp" / "vendor_boot_work"
+        if work_dir.exists(): shutil.rmtree(work_dir)
+        work_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(vendor_boot_img, work_dir / "vendor_boot.img")
+        
+        # Unpack
+        self.shell.run([str(self.ctx.tools.magiskboot), "unpack", "vendor_boot.img"], cwd=work_dir)
+        ramdisk_cpio = work_dir / "ramdisk.cpio"
+        
+        # Decompress
+        self.shell.run([str(self.ctx.tools.magiskboot), "decompress", "ramdisk.cpio", "ramdisk.cpio.decomp"], cwd=work_dir)
+        if (work_dir / "ramdisk.cpio.decomp").exists():
+            ramdisk_cpio.unlink()
+            (work_dir / "ramdisk.cpio.decomp").rename(ramdisk_cpio)
+
+        # Extract to find paths
+        self.shell.run([str(self.ctx.tools.magiskboot), "cpio", "ramdisk.cpio", "extract"], cwd=work_dir)
+
+        # Find modules directory
+        modules_load_files = list(work_dir.rglob("modules.load*"))
+        if not modules_load_files:
+            modules_dir_rel = Path("lib/modules")
+        else:
+            modules_dir_rel = modules_load_files[0].parent.relative_to(work_dir)
+        
+        self.logger.info(f"Modules directory in ramdisk: {modules_dir_rel}")
+
+        # 1. Add/Replace modules in CPIO
+        for ko_file in ko_files:
+            dest_path = modules_dir_rel / ko_file.name
+            self.logger.info(f"  Adding/Replacing: {dest_path}")
+            self.shell.run([str(self.ctx.tools.magiskboot), "cpio", "ramdisk.cpio", f"add 0644 {dest_path} {ko_file}"], cwd=work_dir)
+
+        # 2. Update modules.load*
+        for load_file in modules_load_files:
+            load_rel = load_file.relative_to(work_dir)
+            content = load_file.read_text(errors='ignore')
+            lines = content.splitlines()
+            
+            modified = False
+            for ko_file in ko_files:
+                if ko_file.name not in content:
+                    # Append new modules to the end
+                    lines.append(ko_file.name)
+                    modified = True
+            
+            if modified:
+                self.logger.info(f"  Updating load file: {load_rel}")
+                load_file.write_text("\n".join(lines) + "\n")
+                self.shell.run([str(self.ctx.tools.magiskboot), "cpio", "ramdisk.cpio", f"add 0644 {load_rel} {load_file}"], cwd=work_dir)
+
+        # 3. Update modules.dep
+        dep_file = work_dir / modules_dir_rel / "modules.dep"
+        if dep_file.exists():
+            self.logger.info(f"  Updating modules.dep...")
+            content = dep_file.read_text(errors='ignore')
+            lines = content.splitlines()
+            
+            # For perfmgr.ko, we use the specific dependency line
+            prefix = f"/{modules_dir_rel}/" if str(modules_dir_rel).startswith("lib") else f"lib/modules/"
+            perfmgr_dep = f"{prefix}perfmgr.ko: {prefix}qcom-dcvs.ko {prefix}dcvs_fp.ko {prefix}qcom_rpmh.ko {prefix}cmd-db.ko {prefix}qcom_ipc_logging.ko {prefix}minidump.ko {prefix}smem.ko {prefix}sched-walt.ko {prefix}qcom-cpufreq-hw.ko {prefix}metis.ko {prefix}mi_schedule.ko"
+            
+            new_lines = []
+            perfmgr_found = False
+            for line in lines:
+                if "perfmgr.ko:" in line:
+                    new_lines.append(perfmgr_dep)
+                    perfmgr_found = True
+                else:
+                    new_lines.append(line)
+            
+            if not perfmgr_found:
+                new_lines.append(perfmgr_dep)
+            
+            dep_file.write_text("\n".join(new_lines) + "\n")
+            self.shell.run([str(self.ctx.tools.magiskboot), "cpio", "ramdisk.cpio", f"add 0644 {dep_file.relative_to(work_dir)} {dep_file}"], cwd=work_dir)
+
+        # 4. Repack
+        self.logger.info("Repacking vendor_boot.img...")
+        self.shell.run([str(self.ctx.tools.magiskboot), "repack", "vendor_boot.img"], cwd=work_dir)
+        
+        new_img = work_dir / "new-boot.img"
+        if new_img.exists():
+            shutil.copy2(new_img, vendor_boot_img)
+            self.logger.info("vendor_boot.img updated successfully.")
+        else:
+            self.logger.error("Failed to repack vendor_boot.img - no output file found.")
+            return
+        
+        shutil.rmtree(work_dir)
+        self.logger.info("wild_boost installation completed for kernel 5.10.")
+    
+    def _install_wild_boost_vendor_dlkm(self, ko_files):
+        """
+        Install wild_boost modules to vendor_dlkm.
+        """
+        self.logger.info(f"Installing {len(ko_files)} modules to vendor_dlkm...")
+        
+        target_dir = self.ctx.target_dir / "vendor_dlkm" / "lib" / "modules"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 1. Copy modules
+        for ko_file in ko_files:
+            dest_ko = target_dir / ko_file.name
+            self.logger.info(f"  Copying {ko_file.name} to {dest_ko}")
+            shutil.copy2(ko_file, dest_ko)
+        
+        # 2. Update modules.load
+        modules_load = target_dir / "modules.load"
+        if modules_load.exists():
+            content = modules_load.read_text(encoding='utf-8', errors='ignore')
+            lines = content.splitlines()
+            modified = False
+            for ko_file in ko_files:
+                if ko_file.name not in content:
+                    lines.append(ko_file.name)
+                    modified = True
+            if modified:
+                modules_load.write_text("\n".join(lines) + "\n", encoding='utf-8')
+        else:
+            modules_load.write_text("\n".join([f.name for f in ko_files]) + "\n", encoding='utf-8')
+        
+        # 3. Update modules.dep
+        modules_dep = target_dir / "modules.dep"
+        dep_prefix = "/vendor/lib/modules/"
+        if modules_dep.exists():
+            content = modules_dep.read_text(encoding='utf-8', errors='ignore')
+            lines = content.splitlines()
+            
+            perfmgr_dep = f"{dep_prefix}perfmgr.ko: {dep_prefix}qcom-dcvs.ko {dep_prefix}dcvs_fp.ko {dep_prefix}qcom_rpmh.ko {dep_prefix}cmd-db.ko {dep_prefix}qcom_ipc_logging.ko {dep_prefix}minidump.ko {dep_prefix}smem.ko {dep_prefix}sched-walt.ko {dep_prefix}qcom-cpufreq-hw.ko {dep_prefix}metis.ko {dep_prefix}mi_schedule.ko"
+            
+            new_lines = []
+            perfmgr_found = False
+            for line in lines:
+                if "perfmgr.ko:" in line:
+                    new_lines.append(perfmgr_dep)
+                    perfmgr_found = True
+                else:
+                    new_lines.append(line)
+            
+            if not perfmgr_found:
+                new_lines.append(perfmgr_dep)
+            
+            modules_dep.write_text("\n".join(new_lines) + "\n", encoding='utf-8')
+        else:
+            # If no dep file, at least create the entry for perfmgr
+            modules_dep.write_text(f"{dep_prefix}perfmgr.ko:\n", encoding='utf-8')
+        
+        self.logger.info("wild_boost installation completed for vendor_dlkm.")
 
     def _process_replacements(self):
         """
@@ -137,7 +544,7 @@ class SystemModifier:
             return
 
         self.logger.info(f"Processing {len(replacements)} file replacements...")
-        
+
         stock_root = self.ctx.stock.extracted_dir
         target_root = self.ctx.target_dir
 
@@ -152,6 +559,9 @@ class SystemModifier:
             try:
                 if rtype == "unzip_override":
                     self._handle_unzip_override(rule)
+                elif rtype == "wild_boost":
+                    # Handle wild_boost installation based on kernel version
+                    self._install_wild_boost_kernel_modules(Path(rule["source"]))
                 elif rtype == "copy_file_internal":
                     self._handle_copy_file_internal(rule)
                 elif rtype == "remove_files":
@@ -465,29 +875,53 @@ class SystemModifier:
 
     def _unlock_device_features(self):
         """
-        Unlock device features based on JSON configuration (Common + Device specific)
+        Unlock device features based on JSON configuration (Common + Device specific).
+        Note: wild_boost related features are only applied if wild_boost is enabled in config.json.
         """
-        self.logger.info("Unlocking device features (AOD, AI Display, MEMC)...")
-        
+        self.logger.info("Unlocking device features...")
+
         # 1. Load Configuration
         config = self._load_feature_config()
         if not config:
             return
 
-        # 2. Apply XML Features
+        # 2. Check if wild_boost is enabled in config.json
+        # If wild_boost kernel module is not installed, skip wild_boost related features
+        wild_boost_enabled = self.device_config.get("wild_boost", {}).get("enable", False)
+        
+        # Filter xml_features - remove wild_boost features if not enabled
         xml_features = config.get("xml_features", {})
+        if not wild_boost_enabled:
+            # Remove wild_boost related features
+            xml_features = {k: v for k, v in xml_features.items() 
+                          if not k.startswith("support_wild_boost")}
+            self.logger.info("Wild Boost disabled in config.json - skipping wild_boost features.")
+        
         if xml_features:
             self._apply_xml_features(xml_features)
 
-        # 3. Apply Build Props
+        # 3. Filter build_props - remove wild_boost related props if not enabled
         build_props = config.get("build_props", {})
+        if not wild_boost_enabled and build_props:
+            # Remove spoofing props that are wild_boost specific
+            product_props = build_props.get("product", {})
+            if product_props:
+                # Keep only non-wild_boost props
+                filtered_props = {k: v for k, v in product_props.items() 
+                                if not k.startswith("ro.product.spoofed") 
+                                and not k.startswith("ro.spoofed")
+                                and not k.startswith("persist.prophook")}
+                if filtered_props:
+                    build_props["product"] = filtered_props
+                else:
+                    build_props.pop("product", None)
+        
         if build_props:
             self._apply_build_props(build_props)
-            
+
         # 4. Apply EU Localization Props (if enabled)
-        # Condition: Auto-detected EU ROM OR explicit enable_eu_localization in features.json
         enable_eu_loc = config.get("enable_eu_localization", False) or getattr(self.ctx, "is_port_eu_rom", False)
-        
+
         if enable_eu_loc:
             self.logger.info("Enabling EU Localization properties...")
             eu_cfg_path = Path("devices/common/eu_localization.json")
@@ -742,72 +1176,6 @@ class SystemModifier:
             self.logger.info(f"Injected VNDK {vndk_version} into {target_xml.name} (Text Mode)")
         else:
             self.logger.error("Invalid manifest.xml: No </manifest> tag found.")
-
-    def _fix_voice_trigger(self):
-        """
-        Fix VoiceTrigger crash on older Android versions (< 16) by moving it
-        from product/app to system_ext/app due to linker issues.
-        Logic: Use Stock (Old Model) VoiceTrigger -> Install to system_ext -> Remove Port's Product one
-        """
-        # Check Stock ROM Android Version
-        try:
-            version_str = getattr(self.ctx, "base_android_version", "0")
-            if "." in version_str:
-                version_str = version_str.split(".")[0]
-            base_version = int(version_str)
-        except (ValueError, TypeError):
-            self.logger.warning(f"Could not parse Android version '{version_str}', defaulting to 0.")
-            base_version = 0
-
-        if base_version >= 16:
-            return
-
-        self.logger.info("Checking VoiceTrigger for Android < 16 fix...")
-        
-        # Source: Stock ROM product/app/VoiceTrigger
-        stock_voice_trigger = self.ctx.stock.extracted_dir / "product/app/VoiceTrigger"
-        
-        # Target Destinations
-        target_system_ext_vt = self.ctx.target_dir / "system_ext/app/VoiceTrigger"
-        target_product_vt = self.ctx.target_dir / "product/app/VoiceTrigger"
-
-        if stock_voice_trigger.exists():
-            self.logger.info("Restoring Stock VoiceTrigger to system_ext (Fix for Android < 16)...")
-            
-            # 1. Prepare Destination (system_ext)
-            if not target_system_ext_vt.parent.exists():
-                target_system_ext_vt.parent.mkdir(parents=True, exist_ok=True)
-            
-            if target_system_ext_vt.exists():
-                shutil.rmtree(target_system_ext_vt)
-            
-            # 2. Copy Stock -> Target SystemExt
-            try:
-                shutil.copytree(stock_voice_trigger, target_system_ext_vt, dirs_exist_ok=True)
-                self.logger.info(f"Copied VoiceTrigger to {target_system_ext_vt.relative_to(self.ctx.target_dir)}")
-            except Exception as e:
-                self.logger.error(f"Failed to copy VoiceTrigger: {e}")
-                return
-
-            # 3. Clean up Target (Remove any conflicting VoiceTrigger in Port ROM)
-            # Use recursive search to find VoiceTrigger anywhere in product or system_ext
-            for part in ["product", "system_ext", "system"]:
-                part_dir = self.ctx.target_dir / part
-                if not part_dir.exists(): continue
-                
-                for conflict in part_dir.rglob("VoiceTrigger"):
-                    # Don't delete the one we just installed in system_ext/app
-                    if conflict == target_system_ext_vt:
-                        continue
-                        
-                    self.logger.info(f"Removing conflicting VoiceTrigger at {conflict.relative_to(self.ctx.target_dir)}")
-                    if conflict.is_dir():
-                        shutil.rmtree(conflict)
-                    else:
-                        conflict.unlink()
-                
-        else:
-            self.logger.warning("Stock VoiceTrigger not found in product/app. Skipping fix.")
 
 class FrameworkModifier:
     def __init__(self, context):
