@@ -14,6 +14,7 @@ class JoyoseModifier(ApkModifierPlugin):
     name = "joyose_modifier"
     description = "Disable cloud sync and enable GPU tuner"
     apk_name = "Joyose"
+    package_name = "com.xiaomi.joyose"
     priority = 75
     
     def _apply_patches(self, work_dir: Path):

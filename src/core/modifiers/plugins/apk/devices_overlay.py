@@ -15,6 +15,7 @@ class DevicesOverlayModifier(ApkModifierPlugin):
     name = "devices_overlay_modifier"
     description = "Fix AOD and under-display fingerprint for Android < 16"
     apk_name = "DevicesAndroidOverlay"
+    package_name = ""  # Overlay APKs don't have standard package names
     priority = 80
     
     def check_prerequisites(self) -> bool:

@@ -23,11 +23,14 @@ class ApkModifierPlugin(ModifierPlugin):
     Uses PortingContext's tools:
     - ctx.tools.apkeditor_jar: Path to APKEditor.jar
     - ctx.shell.run_java_jar(): Execute Java jar commands
+    - ctx.find_apk_by_name(): Find APK by filename (cached)
+    - ctx.find_apk_by_package(): Find APK by package name (cached)
     """
     
     # APK metadata
     apk_name: str = ""  # Name of the APK to modify (e.g., "MIUIPackageInstaller")
-    apk_paths: List[str] = []  # Possible paths to find the APK
+    package_name: str = ""  # Package name (e.g., "com.miui.packageinstaller")
+    apk_paths: List[str] = []  # Possible paths to find the APK (fallback)
     
     def __init__(self, context, logger=None):
         super().__init__(context, logger)
@@ -36,7 +39,7 @@ class ApkModifierPlugin(ModifierPlugin):
         self._apk_path: Optional[Path] = None
     
     def check_prerequisites(self) -> bool:
-        """Check if target APK exists."""
+        """Check if target APK exists using cached lookup."""
         self._apk_path = self._find_apk()
         if not self._apk_path:
             self.logger.debug(f"APK {self.apk_name} not found, skipping")
@@ -84,10 +87,38 @@ class ApkModifierPlugin(ModifierPlugin):
         pass
     
     def _find_apk(self) -> Optional[Path]:
-        """Find the target APK in the ROM."""
-        target_dir = self.ctx.target_dir
+        """Find the target APK using cached lookups.
         
-        # Search in standard APK directories
+        Search order:
+        1. Package name lookup (most accurate, requires aapt2)
+        2. Filename lookup (fast, uses cache)
+        3. Custom paths (fallback)
+        4. Glob search (last resort)
+        """
+        # 1. Try package name lookup if specified
+        if self.package_name and hasattr(self.ctx, 'find_apk_by_package'):
+            apk_path = self.ctx.find_apk_by_package(self.package_name)
+            if apk_path:
+                self.logger.debug(f"Found {self.apk_name} by package name: {self.package_name}")
+                return apk_path
+        
+        # 2. Try filename lookup (cached)
+        if hasattr(self.ctx, 'find_apk_by_name'):
+            apk_path = self.ctx.find_apk_by_name(self.apk_name)
+            if apk_path:
+                self.logger.debug(f"Found {self.apk_name} by filename")
+                return apk_path
+        
+        # 3. Try custom paths if specified
+        if self.apk_paths:
+            for path_str in self.apk_paths:
+                full_path = self.ctx.target_dir / path_str
+                if full_path.exists():
+                    self.logger.debug(f"Found {self.apk_name} at custom path: {path_str}")
+                    return full_path
+        
+        # 4. Fallback: direct path search
+        target_dir = self.ctx.target_dir
         search_paths = [
             f"system/app/{self.apk_name}/{self.apk_name}.apk",
             f"system/priv-app/{self.apk_name}/{self.apk_name}.apk",
@@ -95,19 +126,15 @@ class ApkModifierPlugin(ModifierPlugin):
             f"product/priv-app/{self.apk_name}/{self.apk_name}.apk",
             f"system_ext/app/{self.apk_name}/{self.apk_name}.apk",
             f"system_ext/priv-app/{self.apk_name}/{self.apk_name}.apk",
-            f"product/overlay/{self.apk_name}.apk",  # For overlay APKs
+            f"product/overlay/{self.apk_name}.apk",
         ]
-        
-        # Add custom paths if specified
-        if self.apk_paths:
-            search_paths = self.apk_paths + search_paths
         
         for path_str in search_paths:
             full_path = target_dir / path_str
             if full_path.exists():
                 return full_path
         
-        # Fallback: search by name
+        # 5. Last resort: glob search
         for pattern in [f"**/{self.apk_name}.apk"]:
             matches = list(target_dir.glob(pattern))
             if matches:

@@ -99,6 +99,14 @@ class UnifiedModifier(BaseModifier):
             self.logger.info("PHASE 2: APK-Level Modifications")
             self.logger.info("=" * 60)
             
+            # Build APK caches for fast lookup
+            if hasattr(self.ctx, 'build_apk_caches'):
+                cache_stats = self.ctx.build_apk_caches()
+                self.logger.info(
+                    f"APK caches ready: {cache_stats['files']} files, "
+                    f"{cache_stats['packages']} packages"
+                )
+            
             results = self.apk_manager.execute()
             
             success = sum(1 for r in results.values() if r is True)

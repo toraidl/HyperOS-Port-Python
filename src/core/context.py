@@ -1,6 +1,7 @@
 import shutil
 import logging
 import concurrent.futures
+import subprocess
 from pathlib import Path
 import platform
 from types import SimpleNamespace
@@ -24,6 +25,11 @@ class PortingContext:
         self.syncer = ROMSyncEngine(self, logging.getLogger("SyncEngine"))
         self.shell = ShellRunner()
         self.enable_ksu = False
+        
+        # APK caches for fast lookup
+        self._apk_file_cache: dict[str, Path] = {}  # filename -> path
+        self._apk_package_cache: dict[str, Path] = {}  # package_name -> path
+        self._apk_caches_built = False
 
     def _init_tools(self):
         """
@@ -353,3 +359,136 @@ class PortingContext:
             return next(part_dir.rglob("build.prop"))
         except StopIteration:
             return None
+    
+    # =========================================================================
+    # APK Cache Methods
+    # =========================================================================
+    
+    def build_apk_caches(self, force: bool = False) -> dict:
+        """
+        Build APK caches for fast lookup.
+        
+        Creates two caches:
+        1. _apk_file_cache: filename -> Path (e.g., "settings.apk" -> Path)
+        2. _apk_package_cache: package_name -> Path (e.g., "com.android.settings" -> Path)
+        
+        Args:
+            force: If True, rebuild even if caches already exist
+            
+        Returns:
+            dict with 'files' and 'packages' counts
+        """
+        if self._apk_caches_built and not force:
+            return {
+                'files': len(self._apk_file_cache),
+                'packages': len(self._apk_package_cache)
+            }
+        
+        self.logger.info("Building APK caches for fast lookup...")
+        
+        # Clear existing caches
+        self._apk_file_cache.clear()
+        self._apk_package_cache.clear()
+        
+        # Scan all APKs in target directory
+        apk_count = 0
+        for apk_path in self.target_dir.rglob("*.apk"):
+            if not apk_path.is_file():
+                continue
+            
+            # Cache by filename (lowercase for case-insensitive lookup)
+            filename = apk_path.name.lower()
+            if filename not in self._apk_file_cache:
+                self._apk_file_cache[filename] = apk_path
+            
+            # Try to get package name using aapt2
+            pkg_name = self._get_apk_package_name(apk_path)
+            if pkg_name:
+                if pkg_name not in self._apk_package_cache:
+                    self._apk_package_cache[pkg_name] = apk_path
+            
+            apk_count += 1
+        
+        self._apk_caches_built = True
+        
+        self.logger.info(
+            f"APK caches built: {len(self._apk_file_cache)} files, "
+            f"{len(self._apk_package_cache)} packages indexed"
+        )
+        
+        return {
+            'files': len(self._apk_file_cache),
+            'packages': len(self._apk_package_cache),
+            'total_scanned': apk_count
+        }
+    
+    def _get_apk_package_name(self, apk_path: Path) -> str | None:
+        """
+        Use aapt2 to parse APK package name.
+        
+        Args:
+            apk_path: Path to APK file
+            
+        Returns:
+            Package name string or None if failed
+        """
+        if not apk_path.exists() or not self.tools.aapt2.exists():
+            return None
+        
+        cmd = [str(self.tools.aapt2), "dump", "packagename", str(apk_path)]
+        try:
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                check=True,
+                timeout=5  # Prevent hanging on corrupt APKs
+            )
+            return result.stdout.strip()
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            self.logger.debug(f"Failed to parse package name for {apk_path.name}: {e}")
+            return None
+    
+    def find_apk_by_name(self, apk_name: str) -> Path | None:
+        """
+        Find APK by filename (case-insensitive).
+        
+        Args:
+            apk_name: APK filename without path (e.g., "Settings" or "settings.apk")
+            
+        Returns:
+            Path to APK or None if not found
+        """
+        # Ensure caches are built
+        if not self._apk_caches_built:
+            self.build_apk_caches()
+        
+        # Normalize name
+        if not apk_name.endswith('.apk'):
+            apk_name = apk_name + '.apk'
+        
+        # Case-insensitive lookup
+        return self._apk_file_cache.get(apk_name.lower())
+    
+    def find_apk_by_package(self, package_name: str) -> Path | None:
+        """
+        Find APK by package name.
+        
+        Args:
+            package_name: Full package name (e.g., "com.android.settings")
+            
+        Returns:
+            Path to APK or None if not found
+        """
+        # Ensure caches are built
+        if not self._apk_caches_built:
+            self.build_apk_caches()
+        
+        return self._apk_package_cache.get(package_name)
+    
+    def clear_apk_caches(self):
+        """Clear APK caches to free memory."""
+        self._apk_file_cache.clear()
+        self._apk_package_cache.clear()
+        self._apk_caches_built = False
+        self.logger.debug("APK caches cleared")

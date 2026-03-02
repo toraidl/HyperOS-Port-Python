@@ -11,10 +11,11 @@ from src.core.modifiers.plugins.apk.base import ApkModifierPlugin, ApkModifierRe
 @ApkModifierRegistry.register
 class InstallerModifier(ApkModifierPlugin):
     """Modify MIUI Package Installer to disable security checks."""
-    
+
     name = "installer_modifier"
     description = "Disable MIUI Package Installer security checks"
     apk_name = "MIUIPackageInstaller"
+    package_name = "com.miui.packageinstaller"
     priority = 60
     
     def _apply_patches(self, work_dir: Path):
