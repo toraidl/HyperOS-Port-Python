@@ -247,14 +247,35 @@ def main():
 
         # Finalize and generate report
         if monitor:
+            logger.info("Stopping monitor...")
             monitor.stop()
-            monitor.save_report(args.report_path)
-            monitor.print_report()
+            
+            # Force cleanup any remaining threads
+            import threading
+            for t in threading.enumerate():
+                if t != threading.current_thread() and not t.daemon:
+                    logger.debug(f"Waiting for thread: {t.name}")
+                    t.join(timeout=2)
+            
+            logger.info("Saving report...")
+            try:
+                monitor.save_report(args.report_path)
+            except Exception as e:
+                logger.error(f"Failed to save report: {e}")
+            
+            logger.info("Printing report...")
+            try:
+                monitor.print_report()
+            except Exception as e:
+                logger.error(f"Failed to print report: {e}")
             logger.info(f"Monitoring report saved to: {args.report_path}")
 
         logger.info("=" * 70)
         logger.info("Porting completed successfully!")
         logger.info("=" * 70)
+        
+        # Force exit to prevent hanging on background threads
+        sys.exit(0)
 
     except KeyboardInterrupt:
         logger.warning("\nOperation cancelled by user")
