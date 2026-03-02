@@ -14,6 +14,7 @@
     },
     "sm8450": {
         "persist.sys.miui_animator_sched.bigcores": "4-7",
+        "persist.sys.miui_animator_sched.sched_threads": "2",
         "persist.sys.miui_animator_sched.big_prime_cores": "4-7",
         "persist.vendor.display.miui.composer_boost": "4-7",
         "ro.miui.affinity.sfui": "4-7",

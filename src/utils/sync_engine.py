@@ -158,7 +158,6 @@ class ROMSyncEngine:
             else:
                 self.logger.error(f"     [X] Unknown mode '{mode}'")
 
-
     def apply_override(self, override_dir: Path, target_dir: Path):
         """
         Intelligent physical override mechanism
