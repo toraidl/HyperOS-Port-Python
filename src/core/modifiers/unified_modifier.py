@@ -15,6 +15,7 @@ from src.core.modifiers.plugins import (
     VNDKFixPlugin,
     FileReplacementPlugin,
 )
+from src.core.props import PropertyModifier
 from src.core.modifiers.plugins.apk import ApkModifierPlugin, ApkModifierRegistry
 from src.core.config_loader import load_device_config
 
@@ -56,6 +57,7 @@ class UnifiedModifier(BaseModifier):
         # Register system plugins
         self.logger.debug("Registering system-level plugins...")
         self.system_manager.register(FileReplacementPlugin)
+        self.system_manager.register(PropertyModifier)
         self.system_manager.register(WildBoostPlugin)
         self.system_manager.register(FeatureUnlockPlugin)
         self.system_manager.register(VNDKFixPlugin)

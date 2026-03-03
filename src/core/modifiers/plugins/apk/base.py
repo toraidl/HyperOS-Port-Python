@@ -161,7 +161,8 @@ class ApkModifierPlugin(ModifierPlugin):
             # Use context's shell runner: java -jar APKEditor.jar d -i input.apk -o output
             self.ctx.shell.run_java_jar(
                 apkeditor_jar,
-                ["d", "-f", "-i", str(apk_path), "-o", str(work_dir)]
+                ["d", "-f", "-i", str(apk_path), "-o", str(work_dir)],
+                logger=self.logger
             )
             
             self.logger.debug(f"Decompiled {apk_path.name} to {work_dir}")
@@ -185,7 +186,8 @@ class ApkModifierPlugin(ModifierPlugin):
             # Use context's shell runner: java -jar APKEditor.jar b -i input_dir -o output.apk
             self.ctx.shell.run_java_jar(
                 apkeditor_jar,
-                ["b", "-f", "-i", str(work_dir), "-o", str(temp_apk)]
+                ["b", "-f", "-i", str(work_dir), "-o", str(temp_apk)],
+                logger=self.logger
             )
             
             # Replace original

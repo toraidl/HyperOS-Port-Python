@@ -62,7 +62,7 @@ class ShellRunner:
 
     def run(self, cmd: Union[str, List[str]], cwd: Optional[Path] = None, 
             check: bool = True, capture_output: bool = False, 
-            env: Optional[dict] = None) -> subprocess.CompletedProcess:
+            env: Optional[dict] = None, logger: Optional[logging.Logger] = None) -> subprocess.CompletedProcess:
         """
         Core method to execute commands
         :param cmd: List of commands (recommended) or string. e.g. ["lpunpack", "super.img"]
@@ -70,6 +70,7 @@ class ShellRunner:
         :param check: If True, raise exception when command returns non-zero
         :param capture_output: Whether to capture stdout/stderr (do not print directly to console)
         :param env: Environment variables dict (will merge with system env)
+        :param logger: Optional logger to stream output to (forces capture_output=True)
         """
         
         if isinstance(cmd, list):
@@ -87,23 +88,55 @@ class ShellRunner:
         cmd_str = " ".join(cmd) if isinstance(cmd, list) else cmd
         self.logger.debug(f"Running: {cmd_str}")
 
+        # If a logger is provided, we must capture output to stream it
+        should_capture = capture_output or (logger is not None)
+
         try:
-            result = subprocess.run(
-                cmd,
-                cwd=cwd,
-                check=check,
-                shell=(isinstance(cmd, str)), # Enable shell=True if cmd is string
-                text=True,                   # Treat output as string
-                capture_output=capture_output,
-                env=run_env
-            )
-            return result
+            if logger:
+                # Streaming mode
+                process = subprocess.Popen(
+                    cmd,
+                    cwd=cwd,
+                    shell=(isinstance(cmd, str)),
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    env=run_env
+                )
+                
+                output_lines = []
+                if process.stdout:
+                    for line in process.stdout:
+                        logger.info(f"  [SHELL] {line.strip()}")
+                        output_lines.append(line)
+                
+                returncode = process.wait()
+                stdout = "".join(output_lines)
+                
+                if check and returncode != 0:
+                    raise subprocess.CalledProcessError(returncode, cmd, output=stdout)
+                
+                return subprocess.CompletedProcess(cmd, returncode, stdout, "")
+            else:
+                # Normal mode
+                result = subprocess.run(
+                    cmd,
+                    cwd=cwd,
+                    check=check,
+                    shell=(isinstance(cmd, str)),
+                    text=True,
+                    capture_output=should_capture,
+                    env=run_env
+                )
+                return result
             
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Command failed with return code {e.returncode}")
             self.logger.error(f"Command: {cmd_str}")
-            if e.stderr:
+            if hasattr(e, 'stderr') and e.stderr:
                 self.logger.error(f"Stderr: {e.stderr.strip()}")
+            elif hasattr(e, 'output') and e.output:
+                self.logger.error(f"Output: {e.output.strip()}")
             raise e
 
     def run_java_jar(self, jar_path: Union[str, Path], args: List[str], **kwargs):

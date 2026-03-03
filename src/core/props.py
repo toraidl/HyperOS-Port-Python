@@ -4,49 +4,63 @@ import time
 import re
 import logging
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from src.core.config_merger import ConfigMerger
+from src.core.modifiers.plugin_system import ModifierPlugin, ModifierRegistry
 
-class PropertyModifier:
-    def __init__(self, context):
-        """
-        :param context: PortingContext object
-        """
-        self.ctx = context
-        self.logger = logging.getLogger("PropModifier")
+@ModifierRegistry.register
+class PropertyModifier(ModifierPlugin):
+    """Handles build.prop and other property modifications."""
+    
+    name = "property_modifier"
+    description = "Apply build.prop modifications and optimizations"
+    priority = 25  # Run after file replacements but before feature unlocks
+    
+    def __init__(self, context, **kwargs):
+        super().__init__(context, **kwargs)
         self.merger = ConfigMerger(self.logger)
         
         # Custom build info (can be passed from external parameters)
         self.build_user = os.getenv("BUILD_USER", "Bruce")
         self.build_host = os.getenv("BUILD_HOST", "HyperOS-Port")
 
-    def run(self):
+    def modify(self) -> bool:
         """Execute all property modification logic"""
         self.logger.info("Starting build.prop modifications...")
         
-        # 1. Global codename and model replacement
-        self._global_codename_replacement()
+        try:
+            # 1. Global codename and model replacement
+            self._global_codename_replacement()
 
-        # 2. Global replacement from config (time, code, fingerprint, etc.)
-        self._update_general_info()
-        
-        # 3. Screen density (DPI) migration
-        self._update_density()
-        
-        # 4. Apply specific fixes (Millet, Blur, Cgroup)
-        self._apply_specific_fixes()
+            # 2. Global replacement from config (time, code, fingerprint, etc.)
+            self._update_general_info()
+            
+            # 3. Screen density (DPI) migration
+            self._update_density()
+            
+            # 4. Apply specific fixes (Millet, Blur, Cgroup)
+            self._apply_specific_fixes()
 
-        # 5. Reconstruct Hardware Props from Base
-        self._reconstruct_props()
-        
-        self._regenerate_fingerprint()
-        
-        self._optimize_core_affinity()
+            # 5. Reconstruct Hardware Props from Base
+            self._reconstruct_props()
+            
+            self._regenerate_fingerprint()
+            
+            self._optimize_core_affinity()
 
-        # 6. Apply Custom Props from props.json (Highest Priority)
-        self._apply_custom_props()
-        
-        self.logger.info("Build.prop modifications completed.")
+            # 6. Apply Custom Props from props.json (Highest Priority)
+            self._apply_custom_props()
+            
+            self.logger.info("Build.prop modifications completed.")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to apply property modifications: {e}")
+            return False
+
+    def run(self):
+        """Backward compatibility for direct calls."""
+        return self.modify()
 
     def _apply_custom_props(self):
         """
