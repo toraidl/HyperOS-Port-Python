@@ -3,7 +3,7 @@ import platform
 import os
 import logging
 from pathlib import Path
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Callable
 
 class ShellRunner:
     def __init__(self):
