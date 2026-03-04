@@ -5,6 +5,7 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Optional
 import urllib.request
 
 from src.utils.shell import ShellRunner
@@ -175,7 +176,7 @@ class FirmwareModifier(BaseModifier):
                             return f"{match.group(2)}-{match.group(1)}"
             except Exception as e:
                 self.logger.error(f"Error parsing kernel file: {e}")
-        
+
         self.logger.warning("Could not find KMI version pattern in kernel.")
         return None
 

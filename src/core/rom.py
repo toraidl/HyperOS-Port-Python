@@ -32,9 +32,16 @@ class RomType(Enum):
 
 
 class RomPackage:
-    def __init__(self, file_path: Union[str, Path], work_dir: Union[str, Path], label: str = "Rom"):
+    def __init__(
+        self,
+        file_path: Union[str, Path],
+        work_dir: Union[str, Path],
+        label: str = "Rom",
+    ):
         self.props: Dict[str, str] = {}
-        self.prop_history: Dict[str, List[Tuple[str, str]]] = {}  # Tracks property history: {key: [(file, value), ...]}
+        self.prop_history: Dict[
+            str, List[Tuple[str, str]]
+        ] = {}  # Tracks property history: {key: [(file, value), ...]}
         self.path: Path = Path(file_path).resolve()
         self.work_dir: Path = Path(work_dir).resolve()
         self.label: str = label
@@ -101,7 +108,50 @@ class RomPackage:
 
         self.images_dir.mkdir(parents=True, exist_ok=True)
 
-        # === Step 1: Payload/Zip -> Images (Extract img) ===
+        # === Check if source has changed and should extract new images ===
+        # Compute hash of source file for change detection
+        source_hash_path = self.work_dir / "source_file.hash"
+
+        # Compare with previously stored hash
+        source_changed = True  # Assume change by default
+        current_source_hash = self._compute_file_hash(self.path)
+
+        if source_hash_path.exists():
+            try:
+                with open(source_hash_path, "r") as f:
+                    saved_hash = f.read().strip()
+                source_changed = saved_hash != current_source_hash
+            except Exception:
+                self.logger.warning(
+                    f"[{self.label}] Could not read hash file, re-extracting."
+                )
+                source_changed = True  # Error reading hash file, consider as changed
+        else:
+            source_changed = True  # No hash file exists, assume source change
+
+        if source_changed:
+            self.logger.info(
+                f"[{self.label}] Source file changed, starting re-extraction..."
+            )
+        else:
+            self.logger.info(
+                f"[{self.label}] Source file unchanged, checking cached data..."
+            )
+
+            # Check if cached images exist and are not empty
+            if any(self.images_dir.iterdir()):
+                self.logger.info(
+                    f"[{self.label}] Using cached images from previous extraction."
+                )
+                self._batch_extract_files(partitions or ANDROID_LOGICAL_PARTITIONS)
+                return  # Nothing to do if cached extraction is valid
+            else:
+                self.logger.info(
+                    f"[{self.label}] Source unchanged but images missing, re-extracting..."
+                )
+                source_changed = True
+
+        # Execute extraction if source changed
         try:
             if self.rom_type == RomType.PAYLOAD:
                 cmd = ["payload-dumper", "--out", str(self.images_dir)]
@@ -119,14 +169,7 @@ class RomPackage:
                     )
 
                 cmd.append(str(self.path))
-
-                # Simple check: If target images seem to exist, skip payload-dumper
-                if not any(self.images_dir.iterdir()):
-                    self.shell.run(cmd)
-                else:
-                    self.logger.info(
-                        f"[{self.label}] Images directory not empty, assuming extracted."
-                    )
+                self.shell.run(cmd)
 
             elif self.rom_type == RomType.BROTLI:
                 # 1. Extract zip content
@@ -188,6 +231,7 @@ class RomPackage:
                     )
                     try:
                         from src.utils.sdat2img import run_sdat2img
+
                         success = run_sdat2img(
                             str(transfer_list), str(new_dat), str(output_img)
                         )
@@ -241,15 +285,29 @@ class RomPackage:
                                     f"[{self.label}] Unpacking specific partitions: {partitions}"
                                 )
                                 for part in partitions:
-                                    cmd = ["lpunpack", "-p", part, str(super_img), str(self.images_dir)]
+                                    cmd = [
+                                        "lpunpack",
+                                        "-p",
+                                        part,
+                                        str(super_img),
+                                        str(self.images_dir),
+                                    ]
                                     self.shell.run(cmd, check=False)
-                                    cmd_a = ["lpunpack", "-p", f"{part}_a", str(super_img), str(self.images_dir)]
+                                    cmd_a = [
+                                        "lpunpack",
+                                        "-p",
+                                        f"{part}_a",
+                                        str(super_img),
+                                        str(self.images_dir),
+                                    ]
                                     self.shell.run(cmd_a, check=False)
                             else:
                                 self.logger.info(
                                     f"[{self.label}] Unpacking ALL partitions from super.img..."
                                 )
-                                self.shell.run(["lpunpack", str(super_img), str(self.images_dir)])
+                                self.shell.run(
+                                    ["lpunpack", str(super_img), str(self.images_dir)]
+                                )
 
                         except Exception as e:
                             self.logger.error(f"Failed to unpack super.img: {e}")
@@ -263,6 +321,19 @@ class RomPackage:
             raise
 
         self._batch_extract_files(partitions or ANDROID_LOGICAL_PARTITIONS)
+
+        # After successful extraction, save the source hash to avoid reprocessing
+        if source_changed:
+            try:
+                with open(source_hash_path, "w") as f:
+                    f.write(current_source_hash)
+                self.logger.info(
+                    f"[{self.label}] Saved source file hash for future change detection."
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"[{self.label}] Could not save source hash file: {e}"
+                )
 
     def _process_sparse_images(self) -> None:
         """Merge/Convert sparse images (super.img.*, cust.img.*) using simg2img"""
@@ -291,7 +362,11 @@ class RomPackage:
                 f"[{self.label}] Merging sparse super images: {[c.name for c in super_chunks]}..."
             )
             try:
-                cmd = [str(simg2img_bin)] + [str(c) for c in super_chunks] + [str(target_super)]
+                cmd = (
+                    [str(simg2img_bin)]
+                    + [str(c) for c in super_chunks]
+                    + [str(target_super)]
+                )
                 self.shell.run(cmd)
                 for c in super_chunks:
                     os.unlink(c)
@@ -300,7 +375,9 @@ class RomPackage:
                 raise
 
         elif target_super.exists():
-            self.logger.info(f"[{self.label}] converting super.img to raw (if sparse)...")
+            self.logger.info(
+                f"[{self.label}] converting super.img to raw (if sparse)..."
+            )
             temp_raw = self.images_dir / "super.raw.img"
             try:
                 self.shell.run([str(simg2img_bin), str(target_super), str(temp_raw)])
@@ -317,7 +394,11 @@ class RomPackage:
         if cust_chunks:
             self.logger.info(f"[{self.label}] Merging sparse cust images...")
             try:
-                cmd = [str(simg2img_bin)] + [str(c) for c in cust_chunks] + [str(target_cust)]
+                cmd = (
+                    [str(simg2img_bin)]
+                    + [str(c) for c in cust_chunks]
+                    + [str(target_cust)]
+                )
                 self.shell.run(cmd)
                 for c in cust_chunks:
                     os.unlink(c)
@@ -326,7 +407,9 @@ class RomPackage:
 
     def _batch_extract_files(self, candidates: List[str]) -> None:
         """Batch call extract_partition_to_file (Parallel optimization)"""
-        self.logger.info(f"[{self.label}] Processing file extraction for logical partitions...")
+        self.logger.info(
+            f"[{self.label}] Processing file extraction for logical partitions..."
+        )
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             futures = []
@@ -336,9 +419,13 @@ class RomPackage:
                     img_path = self.images_dir / f"{part}_a.img"
 
                 if img_path.exists():
-                    futures.append(executor.submit(self.extract_partition_to_file, part))
+                    futures.append(
+                        executor.submit(self.extract_partition_to_file, part)
+                    )
                 else:
-                    self.logger.debug(f"[{self.label}] Partition image {part} not found, skipping extract.")
+                    self.logger.debug(
+                        f"[{self.label}] Partition image {part} not found, skipping extract."
+                    )
 
             for future in concurrent.futures.as_completed(futures):
                 try:
@@ -369,21 +456,34 @@ class RomPackage:
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            cmd = ["extract.erofs", "-x", "-i", str(img_path), "-o", str(self.extracted_dir)]
+            cmd = [
+                "extract.erofs",
+                "-x",
+                "-i",
+                str(img_path),
+                "-o",
+                str(self.extracted_dir),
+            ]
             self.shell.run(cmd, capture_output=True)
         except Exception as e:
             self.logger.error(f"Failed to extract {part_name}: {e}")
             return None
 
-        possible_contexts = list(target_dir.parent.glob(f"{part_name}*_file_contexts")) + \
-                            list(target_dir.glob("*_file_contexts"))
-        possible_fs_config = list(target_dir.parent.glob(f"{part_name}*_fs_config")) + \
-                             list(target_dir.glob("*_fs_config"))
+        possible_contexts = list(
+            target_dir.parent.glob(f"{part_name}*_file_contexts")
+        ) + list(target_dir.glob("*_file_contexts"))
+        possible_fs_config = list(
+            target_dir.parent.glob(f"{part_name}*_fs_config")
+        ) + list(target_dir.glob("*_fs_config"))
 
         if possible_contexts:
-            shutil.move(possible_contexts[0], self.config_dir / f"{part_name}_file_contexts")
+            shutil.move(
+                possible_contexts[0], self.config_dir / f"{part_name}_file_contexts"
+            )
         if possible_fs_config:
-            shutil.move(possible_fs_config[0], self.config_dir / f"{part_name}_fs_config")
+            shutil.move(
+                possible_fs_config[0], self.config_dir / f"{part_name}_fs_config"
+            )
 
         return target_dir
 
@@ -397,7 +497,9 @@ class RomPackage:
     def parse_all_props(self) -> None:
         """Scan and parse all build.prop files in extracted dir"""
         if not self.extracted_dir.exists():
-            self.logger.warning(f"[{self.label}] Extracted dir not found, skipping props parsing.")
+            self.logger.warning(
+                f"[{self.label}] Extracted dir not found, skipping props parsing."
+            )
             return
 
         self.props = {}
@@ -411,18 +513,25 @@ class RomPackage:
 
         def sort_priority(path: Path) -> int:
             p = str(path).lower()
-            if "system" in p: return 0
-            if "vendor" in p: return 1
-            if "product" in p: return 2
-            if "odm" in p: return 3
-            if "mi_ext" in p: return 4
+            if "system" in p:
+                return 0
+            if "vendor" in p:
+                return 1
+            if "product" in p:
+                return 2
+            if "odm" in p:
+                return 3
+            if "mi_ext" in p:
+                return 4
             return 99
 
         prop_files.sort(key=sort_priority)
         for prop_file in prop_files:
             self._load_single_prop_file(prop_file)
 
-        self.logger.info(f"[{self.label}] Loaded {len(self.props)} properties from {len(prop_files)} files.")
+        self.logger.info(
+            f"[{self.label}] Loaded {len(self.props)} properties from {len(prop_files)} files."
+        )
 
     def _load_single_prop_file(self, file_path: Path) -> None:
         """Helper: Parse single file and update self.props"""
@@ -456,7 +565,11 @@ class RomPackage:
         if not self.props:
             self.parse_all_props()
 
-        content = [f"# DEBUG DUMP for {self.label}", "# Generated by HyperOS Porting Tool", "# ==========================================\n"]
+        content = [
+            f"# DEBUG DUMP for {self.label}",
+            "# Generated by HyperOS Porting Tool",
+            "# ==========================================\n",
+        ]
         for key in sorted(self.props.keys()):
             history = self.prop_history.get(key, [])
             final_val = self.props[key]
@@ -470,6 +583,20 @@ class RomPackage:
         with open(out_file, "w", encoding="utf-8") as f:
             f.write("\n".join(content))
         self.logger.info(f"[{self.label}] Debug props saved.")
+
+    def _compute_file_hash(self, file_path: Path) -> str:
+        """Compute SHA-256 hash of a file for change detection."""
+        import hashlib
+
+        hash_sha256 = hashlib.sha256()
+
+        with open(file_path, "rb") as f:
+            # Read file in chunks to avoid memory issues with large files
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_sha256.update(chunk)
+
+        # Return first 16 characters of the hash (similar to how git handles it)
+        return hash_sha256.hexdigest()[:16]
 
     def get_prop(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """Get property value. Triggers full load if cache is empty."""
