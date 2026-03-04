@@ -4,6 +4,7 @@ import zipfile
 import logging
 import urllib.request
 from pathlib import Path
+from typing import Optional
 
 
 class OtaToolsManager:
@@ -18,7 +19,7 @@ class OtaToolsManager:
         """Check if the otatools directory exists with all required components."""
         return self.tools_dir.exists() and any(self.tools_dir.iterdir())
 
-    def download_otatools(self, url: str = None) -> bool:
+    def download_otatools(self, url: Optional[str] = None) -> bool:
         """
         Download and extract otatools from given URL (or default URL).
 
@@ -54,6 +55,17 @@ class OtaToolsManager:
                 zip_ref.extractall(self.tools_dir)
 
             self.logger.info(f"otatools extracted to {self.tools_dir.resolve()}")
+
+            # Set execute permissions on bin directory files
+            bin_dir = self.tools_dir / "bin"
+            if bin_dir.exists():
+                for file in bin_dir.iterdir():
+                    if file.is_file():
+                        current_mode = file.stat().st_mode
+                        file.chmod(
+                            current_mode | 0o111
+                        )  # Add execute permission for user, group, and others
+                self.logger.info("Set execute permissions on otatools binaries")
 
             # Remove the temporary zip file
             temp_file.unlink()

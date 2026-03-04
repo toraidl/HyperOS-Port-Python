@@ -122,12 +122,6 @@ def main():
         logger.error("Failed to locate or download otatools. Exiting.")
         sys.exit(1)
 
-    # Check and download otatools if needed
-    otatools_manager = OtaToolsManager()
-    if not otatools_manager.ensure_otatools():
-        logger.error("Failed to locate or download otatools. Exiting.")
-        sys.exit(1)
-
     # Handle URL Downloads
     downloader = RomDownloader()
     if args.stock.startswith("http"):
@@ -283,17 +277,6 @@ def main():
     except Exception as e:
         logger.error(f"An error occurred during porting: {e}", exc_info=True)
         sys.exit(1)
-
-
-# Check and download otatools if missing before main function
-def ensure_dependencies():
-    """Check and download required dependencies before running main logic."""
-    logger = logging.getLogger(__name__)
-    otatools_manager = OtaToolsManager()
-    if not otatools_manager.ensure_otatools():
-        logger.error("Failed to locate or download otatools. Exiting.")
-        sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
