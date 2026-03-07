@@ -60,8 +60,24 @@ A powerful, automated Python-based tool for porting HyperOS ROMs across Xiaomi/R
 ```bash
 git clone https://github.com/yourusername/HyperOS-Port-Python.git
 cd HyperOS-Port-Python
-# Install any optional dependencies
-pip install -r requirements.txt 
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Development Setup (Optional)
+If you want to contribute or run tests:
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Run tests
+pytest tests/ -v
+
+# Code formatting
+black src/ --line-length 100
+
+# Linting
+ruff check src/
 ```
 
 ### 2. Basic Usage
@@ -194,15 +210,90 @@ Restores **China-exclusive features** (NFC, Mi Wallet, XiaoAi) to EU/Global ROMs
 
 ```text
 HyperOS-Port-Python/
-├── src/               # Core Python source code
-│   ├── core/          # Unpacking, Patching, Repacking logic
-│   ├── modules/       # Specialized modification modules
-│   └── utils/         # Shell and File utilities
-├── devices/           # Device-specific configs & overlays
-├── otatools/          # Android OTA binaries (bin, lib64)
-├── out/               # Final generated ROM outputs
-└── tools/             # Auxiliary tools (Bundle generator, etc.)
+├── src/                       # Core Python source code
+│   ├── core/                  # Core ROM processing logic
+│   │   ├── modifiers/         # ROM modification system
+│   │   │   ├── framework/     # Framework-level patches (modular)
+│   │   │   │   ├── patches.py     # Smali patch definitions
+│   │   │   │   ├── base.py        # Framework modifier base class
+│   │   │   │   ├── tasks.py       # Specific modification tasks
+│   │   │   │   └── modifier.py    # Main framework modifier
+│   │   │   └── plugins/       # Plugin system for APK modifications
+│   │   ├── rom/               # ROM package handling (modular)
+│   │   │   ├── package.py     # RomPackage class
+│   │   │   ├── extractors.py  # ROM extraction methods
+│   │   │   ├── utils.py       # ROM utilities
+│   │   │   └── constants.py   # Partition lists and enums
+│   │   ├── packer.py          # Image repacking logic
+│   │   ├── context.py         # Porting context management
+│   │   └── props.py           # Property management
+│   ├── modules/               # APK-level modification modules
+│   └── utils/                 # Shell and file utilities
+├── devices/                   # Device-specific configs & overlays
+├── otatools/                  # Android OTA binaries (bin, lib64)
+├── tests/                     # Unit tests
+├── out/                       # Final generated ROM outputs
+├── tools/                     # Auxiliary tools
+├── requirements.txt           # Production dependencies
+├── requirements-dev.txt       # Development dependencies
+└── pyproject.toml            # Python project configuration
 ```
+
+---
+
+## 🧪 Testing
+
+Run the test suite with pytest:
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/core/test_config_loader.py -v
+
+# Run with coverage
+pytest tests/ --cov=src --cov-report=html
+```
+
+---
+
+## 🎨 Code Quality
+
+This project uses several tools to maintain code quality:
+
+| Tool | Purpose | Command |
+|------|---------|---------|
+| **Black** | Code formatting | `black src/ --line-length 100` |
+| **Ruff** | Fast Python linting | `ruff check src/` |
+| **MyPy** | Type checking | `mypy src/ --ignore-missing-imports` |
+
+### Pre-commit Hooks (Optional)
+
+Install pre-commit hooks to automatically check code quality before each commit:
+
+```bash
+# Install pre-commit
+pip install pre-commit
+
+# Install hooks
+pre-commit install
+
+# Run manually on all files
+pre-commit run --all-files
+```
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests and ensure code quality checks pass
+5. Commit your changes (`git commit -m 'feat: Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
 
 ---
 

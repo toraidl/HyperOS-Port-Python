@@ -1,0 +1,10 @@
+# HyperOS Port Tool - Production Dependencies
+# Python 3.8+ required
+
+# HTTP library for downloading assets
+requests>=2.28.0
+
+# Optional performance improvements
+# ujson>=5.0.0  # Faster JSON parsing (optional)
+
+# Optional development dependencies (see requirements-dev.txt)

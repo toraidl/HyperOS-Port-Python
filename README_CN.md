@@ -59,8 +59,24 @@
 ```bash
 git clone https://github.com/yourusername/HyperOS-Port-Python.git
 cd HyperOS-Port-Python
-# 安装可选依赖
-pip install -r requirements.txt 
+# 安装依赖
+pip install -r requirements.txt
+```
+
+### 开发环境设置 (可选)
+如果你想参与贡献或运行测试：
+```bash
+# 安装开发依赖
+pip install -r requirements-dev.txt
+
+# 运行测试
+pytest tests/ -v
+
+# 代码格式化
+black src/ --line-length 100
+
+# 代码检查
+ruff check src/
 ```
 
 ### 2. 基本用法
@@ -193,15 +209,90 @@ sudo python3 main.py --stock stock.zip --port port.zip --pack-type super --fs-ty
 
 ```text
 HyperOS-Port-Python/
-├── src/               # 核心 Python 源代码
-│   ├── core/          # 解包、修补、重打包逻辑
-│   ├── modules/       # 专门的修改模块
-│   └── utils/         # Shell 和文件工具
-├── devices/           # 特定机型的配置和 overlay
-├── otatools/          # Android OTA 二进制文件 (bin, lib64)
-├── out/               # 最终生成的 ROM 输出目录
-└── tools/             # 辅助工具 (Bundle 生成器等)
+├── src/                       # 核心 Python 源代码
+│   ├── core/                  # 核心 ROM 处理逻辑
+│   │   ├── modifiers/         # ROM 修改系统
+│   │   │   ├── framework/     # 框架级补丁 (模块化)
+│   │   │   │   ├── patches.py     # Smali 补丁定义
+│   │   │   │   ├── base.py        # 框架修改器基类
+│   │   │   │   ├── tasks.py       # 具体修改任务
+│   │   │   │   └── modifier.py    # 主框架修改器
+│   │   │   └── plugins/       # APK 修改插件系统
+│   │   ├── rom/               # ROM 包处理 (模块化)
+│   │   │   ├── package.py     # RomPackage 类
+│   │   │   ├── extractors.py  # ROM 提取方法
+│   │   │   ├── utils.py       # ROM 工具函数
+│   │   │   └── constants.py   # 分区列表和枚举
+│   │   ├── packer.py          # 镜像重打包逻辑
+│   │   ├── context.py         # 移植上下文管理
+│   │   └── props.py           # 属性管理
+│   ├── modules/               # APK 级别修改模块
+│   └── utils/                 # Shell 和文件工具
+├── devices/                   # 特定机型的配置和 overlay
+├── otatools/                  # Android OTA 二进制文件 (bin, lib64)
+├── tests/                     # 单元测试
+├── out/                       # 最终生成的 ROM 输出目录
+├── tools/                     # 辅助工具
+├── requirements.txt           # 生产环境依赖
+├── requirements-dev.txt       # 开发环境依赖
+└── pyproject.toml            # Python 项目配置
 ```
+
+---
+
+## 🧪 测试
+
+使用 pytest 运行测试套件：
+
+```bash
+# 运行所有测试
+pytest tests/ -v
+
+# 运行特定测试文件
+pytest tests/core/test_config_loader.py -v
+
+# 运行并生成覆盖率报告
+pytest tests/ --cov=src --cov-report=html
+```
+
+---
+
+## 🎨 代码质量
+
+本项目使用以下工具维护代码质量：
+
+| 工具 | 用途 | 命令 |
+|------|------|------|
+| **Black** | 代码格式化 | `black src/ --line-length 100` |
+| **Ruff** | 快速 Python 检查 | `ruff check src/` |
+| **MyPy** | 类型检查 | `mypy src/ --ignore-missing-imports` |
+
+### 预提交钩子 (可选)
+
+安装预提交钩子以在每次提交前自动检查代码质量：
+
+```bash
+# 安装 pre-commit
+pip install pre-commit
+
+# 安装钩子
+pre-commit install
+
+# 手动运行所有文件检查
+pre-commit run --all-files
+```
+
+---
+
+## 🤝 贡献指南
+
+1. Fork 本仓库
+2. 创建功能分支 (`git checkout -b feature/新功能`)
+3. 提交你的修改
+4. 确保测试通过且代码质量检查通过
+5. 提交更改 (`git commit -m 'feat: 添加新功能'`)
+6. 推送到分支 (`git push origin feature/新功能`)
+7. 创建 Pull Request
 
 ---
 

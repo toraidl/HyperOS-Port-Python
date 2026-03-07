@@ -1,0 +1,22 @@
+# Development dependencies
+# Install: pip install -r requirements-dev.txt
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+coverage>=7.0.0
+
+# Code quality - Python 3.8 compatible versions
+black>=23.0.0
+ruff>=0.1.0
+mypy>=1.5.0
+pre-commit>=2.21.0
+
+# Documentation
+mkdocs>=1.5.0
+mkdocs-material>=9.0.0
+
+# Type stubs (if needed)
+# types-requests
+# types-PyYAML

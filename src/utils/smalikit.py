@@ -5,6 +5,7 @@ import re
 import argparse
 import logging
 
+
 class SmaliArgs:
     # ... (existing SmaliArgs class unchanged)
     def __init__(self, **kwargs):
@@ -24,18 +25,20 @@ class SmaliArgs:
         self.insert_line = None
         self.recursive = False
         self.return_type = None
-        
+
         # Override default values with passed keyword arguments
         self.__dict__.update(kwargs)
-        
+
+
 class Colors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
+    HEADER = "\033[95m"
+    OKBLUE = "\033[94m"
+    OKGREEN = "\033[92m"
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+
 
 class SmaliKit:
     def __init__(self, args, logger=None):
@@ -43,7 +46,7 @@ class SmaliKit:
         self.target_method = args.method
         self.seek_keyword = args.seek_keyword
         self.logger = logger or logging.getLogger("SmaliKit")
-        
+
         # 1. If -m is specified, method name match must be satisfied first
         if self.target_method:
             # Smart detection: if user inputs brackets (e.g. full signature), do not automatically add r"\s*\("
@@ -53,11 +56,11 @@ class SmaliKit:
             else:
                 # User only passed name: getActivity -> automatically match getActivity(
                 method_name_pattern = re.escape(self.target_method) + r"\s*\("
-        
+
         # 2. If -m is not specified but -seek is, allow matching all method names
         elif self.seek_keyword:
-            method_name_pattern = r".*?" 
-            
+            method_name_pattern = r".*?"
+
         else:
             self.logger.error("You must provide either -m (Method Name) or -seek (Keyword search)")
             sys.exit(1)
@@ -66,11 +69,9 @@ class SmaliKit:
         self.method_pattern = re.compile(
             r"(?P<header>^\s*\.method[^\n\r]*?\s%s[^\n\r]*)"
             r"(?P<body>.*?)"
-            r"(?P<footer>^\s*\.end method)"
-            % method_name_pattern,
-            re.DOTALL | re.MULTILINE
+            r"(?P<footer>^\s*\.end method)" % method_name_pattern,
+            re.DOTALL | re.MULTILINE,
         )
-
 
     def log(self, message, color=Colors.ENDC):
         # Log to the logger, stripping color codes if it's going to a file (optional)
@@ -86,7 +87,7 @@ class SmaliKit:
 
         # 1. -remake (Rewrite entire method body)
         if self.args.remake:
-            remake_content = self.args.remake.replace('\\n', '\n')
+            remake_content = self.args.remake.replace("\\n", "\n")
             new_body = f"\n    {remake_content}\n"
             is_modified = True
 
@@ -111,7 +112,7 @@ class SmaliKit:
             if target_str in new_body:
                 new_body = new_body.replace(target_str, "")
                 is_modified = True
-        
+
         # 5. -al (Insert line AFTER match)
         if self.args.after_line:
             target_line, add_line = self.args.after_line
@@ -132,22 +133,24 @@ class SmaliKit:
             try:
                 line_idx = int(line_idx_str)
                 # Split Body by lines
-                lines = new_body.split('\n')
-                
+                lines = new_body.split("\n")
+
                 # Handle format of inserted code (handle \n and add indentation)
-                code_lines = insert_code.replace('\\n', '\n').split('\n')
+                code_lines = insert_code.replace("\\n", "\n").split("\n")
                 formatted_lines = [f"    {line.strip()}" for line in code_lines]
                 block_to_insert = "\n".join(formatted_lines)
-                
+
                 # Boundary check and insertion
                 # Note: lines[0] is usually empty string (because regex captured body starts with newline)
                 # So lines[1] is the actual first line of code (.locals)
-                
-                if line_idx < 0: line_idx = 0
-                if line_idx > len(lines): line_idx = len(lines)
-                
+
+                if line_idx < 0:
+                    line_idx = 0
+                if line_idx > len(lines):
+                    line_idx = len(lines)
+
                 lines.insert(line_idx, block_to_insert)
-                
+
                 new_body = "\n".join(lines)
                 is_modified = True
             except ValueError:
@@ -155,10 +158,9 @@ class SmaliKit:
 
         return new_body, is_modified
 
-
     def process_content(self, content, file_path):
         matches = list(self.method_pattern.finditer(content))
-        
+
         if not matches:
             return content, False
 
@@ -166,13 +168,13 @@ class SmaliKit:
         replacements = []
 
         for match in matches:
-            header = match.group('header')
-            body = match.group('body')
-            footer = match.group('footer')
+            header = match.group("header")
+            body = match.group("body")
+            footer = match.group("footer")
             full_block = match.group(0)
 
             if self.seek_keyword and self.seek_keyword not in body:
-                continue 
+                continue
 
             if self.args.return_type:
                 target_ret_sig = f"){self.args.return_type}"
@@ -180,11 +182,14 @@ class SmaliKit:
                     continue
 
             method_sig = header.strip()
-            self.log(f"[*] Target Found: {os.path.basename(file_path)} -> {Colors.BOLD}{method_sig}{Colors.ENDC}", Colors.OKBLUE)
+            self.log(
+                f"[*] Target Found: {os.path.basename(file_path)} -> {Colors.BOLD}{method_sig}{Colors.ENDC}",
+                Colors.OKBLUE,
+            )
 
             if self.args.delete_method:
                 self.log(f"  -> Applying -dm (Delete Method)...", Colors.FAIL)
-                replacements.append((full_block, "")) 
+                replacements.append((full_block, ""))
                 file_modified = True
                 continue
 
@@ -219,15 +224,15 @@ class SmaliKit:
 
     def patch_file(self, file_path):
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
-            
+
             if self.target_method and self.target_method not in content and not self.seek_keyword:
                 return False
 
             new_content, patched = self.process_content(content, file_path)
             if patched:
-                with open(file_path, 'w', encoding='utf-8') as f:
+                with open(file_path, "w", encoding="utf-8") as f:
                     f.write(new_content)
                 self.log(f"  -> [SUCCESS] Saved: {file_path}", Colors.OKGREEN)
                 return True
@@ -235,39 +240,61 @@ class SmaliKit:
             self.log(f"[ERROR] processing {file_path}: {e}", Colors.FAIL)
         return False
 
+
 def main():
     parser = argparse.ArgumentParser(description="Python smali_kit with Auto-Search & Hook")
-    
-    parser.add_argument('-p', dest='path', help="Path to smali folder")
-    parser.add_argument('-f', dest='file_path', help="Specific file to patch (Overrides -p)")
-    
-    parser.add_argument('-m', dest='method', help="Exact method name to target")
-    parser.add_argument('-seek', dest='seek_keyword', help="Search for a method containing this string")
-    
-    parser.add_argument('-in', dest='iname', help="Filter by filename (only for folder mode)")
-    parser.add_argument('-remake', dest='remake', help="Replace entire method body")
-    parser.add_argument('-rim', dest='replace_in_method', nargs=2, help="String Replace: OLD NEW")
-    parser.add_argument('-reg', dest='regex_replace', nargs=2, metavar=('PATTERN', 'REPLACEMENT'), help="Regex Replace")
-    parser.add_argument('-dim', dest='delete_in_method', help="Delete specific string")
-    parser.add_argument('-dm', dest='delete_method', action='store_true', help="Delete entire method")
-    parser.add_argument('-al', dest='after_line', nargs=2, help="Insert line AFTER string match")
-    parser.add_argument('-bl', dest='before_line', nargs=2, help="Insert line BEFORE string match")
+
+    parser.add_argument("-p", dest="path", help="Path to smali folder")
+    parser.add_argument("-f", dest="file_path", help="Specific file to patch (Overrides -p)")
+
+    parser.add_argument("-m", dest="method", help="Exact method name to target")
+    parser.add_argument(
+        "-seek", dest="seek_keyword", help="Search for a method containing this string"
+    )
+
+    parser.add_argument("-in", dest="iname", help="Filter by filename (only for folder mode)")
+    parser.add_argument("-remake", dest="remake", help="Replace entire method body")
+    parser.add_argument("-rim", dest="replace_in_method", nargs=2, help="String Replace: OLD NEW")
+    parser.add_argument(
+        "-reg",
+        dest="regex_replace",
+        nargs=2,
+        metavar=("PATTERN", "REPLACEMENT"),
+        help="Regex Replace",
+    )
+    parser.add_argument("-dim", dest="delete_in_method", help="Delete specific string")
+    parser.add_argument(
+        "-dm", dest="delete_method", action="store_true", help="Delete entire method"
+    )
+    parser.add_argument("-al", dest="after_line", nargs=2, help="Insert line AFTER string match")
+    parser.add_argument("-bl", dest="before_line", nargs=2, help="Insert line BEFORE string match")
     # [新增参数]
-    parser.add_argument('-il', dest='insert_line', nargs=2, metavar=('LINE_NUM', 'CODE'), help="Insert code at specific line number (1-based index)")
-    
-    parser.add_argument('-recursive', dest='recursive', action='store_true')
-    parser.add_argument('-ret', dest='return_type', help="Filter by Smali return type (e.g. Z, V, I)")
-    
+    parser.add_argument(
+        "-il",
+        dest="insert_line",
+        nargs=2,
+        metavar=("LINE_NUM", "CODE"),
+        help="Insert code at specific line number (1-based index)",
+    )
+
+    parser.add_argument("-recursive", dest="recursive", action="store_true")
+    parser.add_argument(
+        "-ret", dest="return_type", help="Filter by Smali return type (e.g. Z, V, I)"
+    )
+
     args, unknown = parser.parse_known_args()
-    
+
     target_path = args.file_path if args.file_path else args.path
-    
+
     if not target_path:
-        print(f"{Colors.FAIL}[ERROR] You must provide either -p (folder) or -f (file){Colors.ENDC}")
+        sys.stderr.write(
+            f"{Colors.FAIL}[ERROR] You must provide either -p (folder) or -f (file){Colors.ENDC}\n"
+        )
         sys.exit(1)
 
     patcher = SmaliKit(args)
     patcher.walk_and_patch(target_path)
+
 
 if __name__ == "__main__":
     main()

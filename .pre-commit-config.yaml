@@ -1,0 +1,70 @@
+# Pre-commit hooks configuration
+# Install: pip install pre-commit
+# Setup: pre-commit install
+# Run manually: pre-commit run --all-files
+
+default_stages: [pre-commit]
+fail_fast: false
+
+repos:
+  # Basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(otatools/|build/|out/)
+      - id: end-of-file-fixer
+        exclude: ^(otatools/|build/|out/)
+      - id: check-yaml
+      - id: check-json
+        exclude: ^devices/
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+        exclude: ^otatools/
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: detect-private-key
+
+  # Black - Code formatter
+  - repo: https://github.com/psf/black
+    rev: 24.1.1
+    hooks:
+      - id: black
+        language_version: python3.8
+        args: ['--line-length=100']
+        exclude: ^(otatools/|build/|out/)/
+
+  # Ruff - Fast Python linter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.1
+    hooks:
+      - id: ruff
+        args: ['--fix', '--exit-non-zero-on-fix']
+        exclude: ^(otatools/|build/|out/)/
+
+  # MyPy - Type checker
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        additional_dependencies: []
+        exclude: ^(otatools/|tests/|build/|out/)/
+        args: ['--ignore-missing-imports']
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.39.0
+    hooks:
+      - id: markdownlint
+        args: ['--fix']
+        exclude: ^(otatools/|build/|out/)/
+
+  # Gitleaks - Secret scanning
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.2
+    hooks:
+      - id: gitleaks
+        exclude: ^devices/

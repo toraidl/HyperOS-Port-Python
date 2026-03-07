@@ -1,16 +1,23 @@
 """Base modifier class with common utilities."""
+
+from __future__ import annotations
+
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.core.context import PortingContext
 
 
 class BaseModifier:
     """Base class for all modifiers with common utilities."""
-    
-    def __init__(self, context, name: str):
-        self.ctx = context
-        self.name = name
-        self.logger = logging.getLogger(name)
-    
+
+    def __init__(self, context: PortingContext, name: str) -> None:
+        self.ctx: PortingContext = context
+        self.name: str = name
+        self.logger: logging.Logger = logging.getLogger(name)
+
     def _find_file_recursive(self, root_dir: Path, filename: str) -> Path | None:
         """Find a file recursively in a directory."""
         if not root_dir.exists():
