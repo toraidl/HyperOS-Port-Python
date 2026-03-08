@@ -209,6 +209,16 @@ class ROMSyncEngine:
                             "overlay", "framework", "mi_ext", "odm", "oem",
                             "bin", "lib", "lib64", "etc", "media", "fonts"
                         }
+                        # Skip erasure if files are identical
+                        if old_file.exists() and override_file.stat().st_size == old_file.stat().st_size:
+                            import hashlib
+                            def get_hash(p):
+                                with open(p, "rb") as f:
+                                    return hashlib.md5(f.read()).hexdigest()
+                            if get_hash(override_file) == get_hash(old_file):
+                                self.logger.debug(f"     [=] Source and target APKs are identical, skipping erasure.")
+                                continue
+
                         # Only delete specific independent App folder, prevent accidental deletion of root dirs like system/app
                         if old_dir.name not in protected_dirs:
                             self.logger.debug(f"     [-] Erasing old APK directory: {old_dir.relative_to(target_dir)}")
