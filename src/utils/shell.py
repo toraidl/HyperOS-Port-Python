@@ -63,7 +63,8 @@ class ShellRunner:
     def run(self, cmd: Union[str, List[str]], cwd: Optional[Path] = None, 
             check: bool = True, capture_output: bool = False, 
             env: Optional[dict] = None, logger: Optional[logging.Logger] = None,
-            on_line: Optional[Callable[[str], None]] = None) -> subprocess.CompletedProcess:
+            on_line: Optional[Callable[[str], None]] = None,
+            shell: bool = False) -> subprocess.CompletedProcess:
         """
         Core method to execute commands
         :param cmd: List of commands (recommended) or string. e.g. ["lpunpack", "super.img"]
@@ -73,9 +74,11 @@ class ShellRunner:
         :param env: Environment variables dict (will merge with system env)
         :param logger: Optional logger to stream output to (forces capture_output=True)
         :param on_line: Optional callback function called for each line of output
+        :param shell: If True, execute the command through the shell
         """
         
-        if isinstance(cmd, list):
+        # Binary search logic (skipped if shell=True and cmd is a string)
+        if not shell and isinstance(cmd, list):
             tool = cmd[0]
             tool_path = self.get_binary_path(tool)
             if tool_path.is_absolute() and tool_path.exists():
@@ -99,7 +102,7 @@ class ShellRunner:
                 process = subprocess.Popen(
                     cmd,
                     cwd=cwd,
-                    shell=(isinstance(cmd, str)),
+                    shell=shell if shell else (isinstance(cmd, str)),
                     text=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
@@ -131,7 +134,7 @@ class ShellRunner:
                     cmd,
                     cwd=cwd,
                     check=check,
-                    shell=(isinstance(cmd, str)),
+                    shell=shell if shell else (isinstance(cmd, str)),
                     text=True,
                     capture_output=should_capture,
                     env=run_env
