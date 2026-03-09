@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import zipfile
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
@@ -127,6 +128,9 @@ def extract_fastboot(
         for f in z.namelist():
             if f.endswith("super.img") or f.endswith("images/super.img"):
                 pass
+            elif "images/super.img." in f or f.startswith("super.img."):
+                # xiaomi.eu ROMs with split sparse super images (e.g., super.img.0, super.img.1)
+                pass
             elif not f.endswith(".img"):
                 continue
 
@@ -156,27 +160,38 @@ def extract_fastboot(
                         f"[{package.label}] Unpacking specific partitions: {partitions}"
                     )
                     for part in partitions:
-                        cmd = [
-                            "lpunpack",
-                            "-p",
-                            part,
-                            str(super_img),
-                            str(package.images_dir),
-                        ]
-                        package.shell.run(cmd, check=False)
-                        cmd_a = [
-                            "lpunpack",
-                            "-p",
-                            f"{part}_a",
-                            str(super_img),
-                            str(package.images_dir),
-                        ]
-                        package.shell.run(cmd_a, check=False)
+                        # Try standard lpunpack first
+                        success = True
+                        try:
+                            cmd = ["lpunpack", "-p", part, str(super_img), str(package.images_dir)]
+                            package.shell.run(cmd)
+                        except Exception:
+                            package.logger.warning(f"[{package.label}] lpunpack failed for {part}, trying lpunpack.py...")
+                            try:
+                                cmd_py = [sys.executable, "src/utils/lpunpack.py", "-p", part, str(super_img), str(package.images_dir)]
+                                package.shell.run(cmd_py)
+                            except Exception as e:
+                                package.logger.error(f"[{package.label}] lpunpack.py also failed for {part}: {e}")
+                                success = False
+
+                        if success:
+                            # Try suffix _a if needed (for AB devices)
+                            try:
+                                cmd_a = ["lpunpack", "-p", f"{part}_a", str(super_img), str(package.images_dir)]
+                                package.shell.run(cmd_a)
+                            except Exception:
+                                # Not always an error if _a doesn't exist
+                                pass
                 else:
                     package.logger.info(
                         f"[{package.label}] Unpacking ALL partitions from super.img..."
                     )
-                    package.shell.run(["lpunpack", str(super_img), str(package.images_dir)])
+                    try:
+                        package.shell.run(["lpunpack", str(super_img), str(package.images_dir)])
+                    except Exception:
+                        package.logger.warning(f"[{package.label}] lpunpack failed, trying lpunpack.py...")
+                        cmd_py = [sys.executable, "src/utils/lpunpack.py", str(super_img), str(package.images_dir)]
+                        package.shell.run(cmd_py)
 
             except Exception as e:
                 package.logger.error(f"Failed to unpack super.img: {e}")
@@ -184,6 +199,28 @@ def extract_fastboot(
             finally:
                 if super_img.exists():
                     os.remove(super_img)
+
+            # === Rename partitions with suffixes (e.g., system_a.img -> system.img) ===
+            # This simplifies all subsequent steps.
+            # Logic: Prioritize _a, then _b. Delete empty images.
+            for suffix in ["_a.img", "_b.img"]:
+                for img in package.images_dir.glob(f"*{suffix}"):
+                    # If image is empty (0 bytes), it's a dummy slot, just delete it
+                    if img.stat().st_size == 0:
+                        os.remove(img)
+                        continue
+                    
+                    base_name = img.name.replace(suffix, ".img")
+                    target = img.with_name(base_name)
+                    
+                    if not target.exists():
+                        img.rename(target)
+                        package.logger.info(f"[{package.label}] Normalized partition name: {img.name} -> {base_name}")
+                    else:
+                        # If target already exists, and the current one is just another slot, 
+                        # we keep the one already there (usually _a was processed first)
+                        package.logger.debug(f"[{package.label}] Skipping {img.name} as {base_name} already exists.")
+                        os.remove(img)
 
 
 def extract_local(

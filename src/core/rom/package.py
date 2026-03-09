@@ -80,6 +80,9 @@ class RomPackage:
                     self.rom_type = RomType.BROTLI
                 elif "images/super.img" in namelist or "super.img" in namelist:
                     self.rom_type = RomType.FASTBOOT
+                elif any(x.startswith("images/super.img.") for x in namelist):
+                    # xiaomi.eu ROMs with split sparse super images (e.g., super.img.0, super.img.1)
+                    self.rom_type = RomType.FASTBOOT
         elif self.path.suffix == ".tgz":
             self.rom_type = RomType.FASTBOOT
 
@@ -142,13 +145,19 @@ class RomPackage:
             self.logger.info(f"[{self.label}] Source file unchanged, checking cached data...")
 
             # Check if cached images exist and are not empty
-            if any(self.images_dir.iterdir()):
+            # Enhanced check: ensure at least 'system.img' (or 'system_a.img') exists
+            # Also for FASTBOOT, if super.img still exists, it means extraction was incomplete.
+            has_images = any(self.images_dir.iterdir())
+            has_system = (self.images_dir / "system.img").exists() or (self.images_dir / "system_a.img").exists()
+            incomplete_fastboot = self.rom_type == RomType.FASTBOOT and (self.images_dir / "super.img").exists()
+
+            if has_images and has_system and not incomplete_fastboot:
                 self.logger.info(f"[{self.label}] Using cached images from previous extraction.")
                 self._batch_extract_files(partitions or ANDROID_LOGICAL_PARTITIONS)
                 return  # Nothing to do if cached extraction is valid
             else:
                 self.logger.info(
-                    f"[{self.label}] Source unchanged but images missing, re-extracting..."
+                    f"[{self.label}] Source unchanged but cached images are missing or incomplete, re-extracting..."
                 )
                 source_changed = True
 
@@ -228,6 +237,7 @@ class RomPackage:
 
         img_path = self.images_dir / f"{part_name}.img"
         if not img_path.exists():
+            # Fallback for old cases or other ROM types, though fastboot should be normalized now
             img_path = self.images_dir / f"{part_name}_a.img"
             if not img_path.exists():
                 self.logger.warning(f"[{self.label}] Image {part_name}.img not found.")
@@ -247,21 +257,41 @@ class RomPackage:
                 str(self.extracted_dir),
             ]
             self.shell.run(cmd, capture_output=True)
+            
+            # Since img_path might still be system_a.img if normalization didn't happen,
+            # we handle the directory rename just in case
+            extracted_name = img_path.stem # e.g., 'system' or 'system_a'
+            if extracted_name != part_name:
+                actual_dir = self.extracted_dir / extracted_name
+                if actual_dir.exists() and actual_dir.is_dir():
+                    if target_dir.exists():
+                        shutil.rmtree(target_dir)
+                    actual_dir.rename(target_dir)
+                    self.logger.info(f"[{self.label}] Renamed {extracted_name} to {part_name}")
+
         except Exception as e:
             self.logger.error(f"Failed to extract {part_name}: {e}")
             return None
 
-        possible_contexts = list(target_dir.parent.glob(f"{part_name}*_file_contexts")) + list(
-            target_dir.glob("*_file_contexts")
-        )
-        possible_fs_config = list(target_dir.parent.glob(f"{part_name}*_fs_config")) + list(
-            target_dir.glob("*_fs_config")
-        )
+        # Robust config file detection
+        # Pattern search to handle both 'system_fs_config' and 'system_a_fs_config'
+        search_pattern = img_path.stem
+
+        possible_contexts = list(self.extracted_dir.glob(f"config/{search_pattern}_file_contexts")) + \
+                            list(target_dir.parent.glob(f"{search_pattern}_file_contexts")) + \
+                            list(target_dir.glob("*_file_contexts"))
+        
+        possible_fs_config = list(self.extracted_dir.glob(f"config/{search_pattern}_fs_config")) + \
+                             list(target_dir.parent.glob(f"{search_pattern}_fs_config")) + \
+                             list(target_dir.glob("*_fs_config"))
 
         if possible_contexts:
-            shutil.move(possible_contexts[0], self.config_dir / f"{part_name}_file_contexts")
+            target_context = self.config_dir / f"{part_name}_file_contexts"
+            shutil.move(possible_contexts[0], target_context)
+            
         if possible_fs_config:
-            shutil.move(possible_fs_config[0], self.config_dir / f"{part_name}_fs_config")
+            target_fs = self.config_dir / f"{part_name}_fs_config"
+            shutil.move(possible_fs_config[0], target_fs)
 
         return target_dir
 
