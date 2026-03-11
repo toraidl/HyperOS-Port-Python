@@ -1,7 +1,6 @@
 {
     "build_props": {
         "product": {
-            "persist.prophook.android": "IS_INTERNATIONAL_BUILD:true,IS_GLOBAL_BUILD:true",
             "persist.prophook.com.miui.packageinstaller": "IS_INTERNATIONAL_BUILD:true,IS_GLOBAL_BUILD:true",
             "persist.prophook.com.xiaomi.powerchecker": "IS_INTERNATIONAL_BUILD:true,IS_GLOBAL_BUILD:true",
             "persist.prophook.com.miui.powerkeeper": "IS_INTERNATIONAL_BUILD:true,IS_GLOBAL_BUILD:true",
