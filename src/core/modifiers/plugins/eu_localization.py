@@ -241,6 +241,9 @@ class EULocalizationPlugin(ModifierPlugin):
         """Replace existing apps with EU versions."""
         self.logger.info("Scanning for APKs to replace in target ROM...")
 
+        # Clear syncer package cache to ensure fresh lookup in target_dir
+        self.ctx.syncer._target_package_cache = {}
+
         # 1. Identify all unique packages
         bundle_packages: Dict[str, List[Path]] = {}
         for apk_file in bundle_path.rglob("*.apk"):
