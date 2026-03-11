@@ -114,6 +114,37 @@ class EULocalizationPlugin(ModifierPlugin):
 
         self.logger.info(f"Extracting {len(apps_list)} item(s) from CN stock...")
 
+        # First, remove conflicting apps from target
+        self.logger.info("Removing conflicting apps from target before extraction...")
+        for item in apps_list:
+            pkg_name = None
+            if isinstance(item, dict):
+                pkg_name = item.get("package")
+
+            if pkg_name:
+                target_apks = self.ctx.syncer.find_apks_by_package(pkg_name, self.ctx.target_dir)
+                for target_apk in target_apks:
+                    if target_apk.exists():
+                        app_dir = target_apk.parent
+                        protected_dirs = {
+                            "app",
+                            "priv-app",
+                            "system",
+                            "product",
+                            "system_ext",
+                            "vendor",
+                            "overlay",
+                            "framework",
+                            "mi_ext",
+                            "odm",
+                            "oem",
+                        }
+                        if app_dir.name not in protected_dirs:
+                            self.logger.info(f"Removing conflicting app: {app_dir}")
+                            shutil.rmtree(app_dir)
+                        else:
+                            target_apk.unlink()
+
         extracted_count = 0
         extracted_items: List[Path] = []
 
@@ -202,10 +233,6 @@ class EULocalizationPlugin(ModifierPlugin):
             return False
 
         self.logger.info(f"Successfully extracted {extracted_count} item(s) from CN stock")
-
-        # Run replacement logic to remove conflicting apps from target
-        extracted_root = self.ctx.target_dir
-        self._replace_eu_apps(extracted_root)
 
         return True
 
