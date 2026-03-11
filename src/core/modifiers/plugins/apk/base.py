@@ -34,6 +34,7 @@ class ApkModifierPlugin(ModifierPlugin):
     apk_name: str = ""  # Name of the APK to modify (e.g., "MIUIPackageInstaller")
     package_name: str = ""  # Package name (e.g., "com.miui.packageinstaller")
     apk_paths: List[str] = []  # Possible paths to find the APK (fallback)
+    cache_version: str = "1.0"  # Cache version for APK modification results
 
     def __init__(self, context, logger=None):
         super().__init__(context, logger)
@@ -109,11 +110,21 @@ class ApkModifierPlugin(ModifierPlugin):
         return True
 
     def modify(self) -> bool:
-        """Execute APK modification workflow."""
+        """Execute APK modification workflow with caching support."""
         if not self._apk_path:
             return False
 
         self.logger.info(f"Modifying {self.apk_name}...")
+
+        # Check APK modification cache
+        cached_apk = self._get_cached_apk()
+        if cached_apk:
+            self.logger.info(f"Using cached modified APK: {self.apk_name}")
+            try:
+                shutil.copy2(cached_apk, self._apk_path)
+                return True
+            except Exception as e:
+                self.logger.warning(f"Failed to copy cached APK: {e}, will rebuild")
 
         try:
             # 1. Decompile APK using context's tools
@@ -131,6 +142,8 @@ class ApkModifierPlugin(ModifierPlugin):
 
             if output_apk:
                 self.logger.info(f"Successfully modified {self.apk_name}")
+                # Save to cache
+                self._save_apk_cache(output_apk)
                 return True
             else:
                 self.logger.error(f"Failed to recompile {self.apk_name}")
@@ -138,6 +151,100 @@ class ApkModifierPlugin(ModifierPlugin):
 
         except Exception as e:
             self.logger.error(f"Error modifying {self.apk_name}: {e}")
+            return False
+
+    def _get_cache_key(self) -> Optional[str]:
+        """Generate cache key for this APK modification.
+
+        Returns:
+            Cache key string or None if caching not possible
+        """
+        if not self._apk_path or not self._apk_path.exists():
+            return None
+
+        # Get APK hash
+        import hashlib
+
+        hash_md5 = hashlib.md5()
+        with open(self._apk_path, "rb") as f:
+            hash_md5.update(f.read(10 * 1024 * 1024))  # Read first 10MB
+        apk_hash = hash_md5.hexdigest()[:16]
+
+        # Combine: APK name, APK hash, modifier class name, cache version
+        return f"{self.apk_name}_{apk_hash}_{self.__class__.__name__}_v{self.cache_version}"
+
+    def _get_cached_apk(self) -> Optional[Path]:
+        """Check if a cached modified APK exists.
+
+        Returns:
+            Path to cached APK or None
+        """
+        if not hasattr(self.ctx, "cache_manager") or not self.ctx.cache_manager:
+            return None
+
+        cache_key = self._get_cache_key()
+        if not cache_key:
+            return None
+
+        cache_dir = (
+            self.ctx.cache_manager._get_apk_cache_dir(
+                self.ctx.cache_manager._compute_rom_hash(self.ctx.port.path)
+            )
+            / cache_key
+        )
+
+        cached_apk = cache_dir / "modified.apk"
+        if cached_apk.exists():
+            return cached_apk
+        return None
+
+    def _save_apk_cache(self, apk_path: Path) -> bool:
+        """Save modified APK to cache.
+
+        Args:
+            apk_path: Path to the modified APK
+
+        Returns:
+            True if saved successfully
+        """
+        if not hasattr(self.ctx, "cache_manager") or not self.ctx.cache_manager:
+            return False
+
+        cache_key = self._get_cache_key()
+        if not cache_key:
+            return False
+
+        try:
+            cache_dir = (
+                self.ctx.cache_manager._get_apk_cache_dir(
+                    self.ctx.cache_manager._compute_rom_hash(self.ctx.port.path)
+                )
+                / cache_key
+            )
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            cached_apk = cache_dir / "modified.apk"
+            shutil.copy2(apk_path, cached_apk)
+
+            # Save metadata
+            import json
+            from datetime import datetime
+
+            metadata = {
+                "cache_key": cache_key,
+                "apk_name": self.apk_name,
+                "package_name": self.package_name,
+                "modifier_class": self.__class__.__name__,
+                "cache_version": self.cache_version,
+                "cached_at": datetime.now().isoformat(),
+            }
+            (cache_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+            self.logger.debug(f"Cached modified APK: {self.apk_name}")
+            return True
+
+        except Exception as e:
+            self.logger.warning(f"Failed to cache APK {self.apk_name}: {e}")
             return False
 
     @abstractmethod
