@@ -221,6 +221,9 @@ def main():
         logger.info(">>> Phase 2: Initialization")
         ctx = PortingContext(stock, port, target_work_dir, is_official_modify=is_official_modify)
 
+        # Set cache manager for APK-level caching
+        ctx.cache_manager = cache_manager
+
         # Set dynamic attributes
         ctx.eu_bundle = args.eu_bundle  # type: ignore
         ctx.initialize_target()
