@@ -74,6 +74,31 @@ class EULocalizationPlugin(ModifierPlugin):
 
         return False
 
+    def _remove_target_apks(self, target_apks: List[Path]):
+        """Remove target APKs and their parent directories."""
+        protected_dirs = {
+            "app",
+            "priv-app",
+            "system",
+            "product",
+            "system_ext",
+            "vendor",
+            "overlay",
+            "framework",
+            "mi_ext",
+            "odm",
+            "oem",
+        }
+
+        for target_apk in target_apks:
+            if target_apk.exists():
+                app_dir = target_apk.parent
+                if app_dir.name not in protected_dirs:
+                    self.logger.info(f"Removing conflicting app: {app_dir}")
+                    shutil.rmtree(app_dir)
+                else:
+                    target_apk.unlink()
+
     def modify(self) -> bool:
         """Apply EU localization."""
         # If stock is CN, extract directly from stock
@@ -118,32 +143,52 @@ class EULocalizationPlugin(ModifierPlugin):
         self.logger.info("Removing conflicting apps from target before extraction...")
         for item in apps_list:
             pkg_name = None
+            app_path_str = None
+
             if isinstance(item, dict):
                 pkg_name = item.get("package")
+                app_path_str = item.get("path")
+            else:
+                app_path_str = item
 
+            # Method 1: If package_name provided, use it directly
             if pkg_name:
                 target_apks = self.ctx.syncer.find_apks_by_package(pkg_name, self.ctx.target_dir)
-                for target_apk in target_apks:
-                    if target_apk.exists():
-                        app_dir = target_apk.parent
-                        protected_dirs = {
-                            "app",
-                            "priv-app",
-                            "system",
-                            "product",
-                            "system_ext",
-                            "vendor",
-                            "overlay",
-                            "framework",
-                            "mi_ext",
-                            "odm",
-                            "oem",
-                        }
-                        if app_dir.name not in protected_dirs:
-                            self.logger.info(f"Removing conflicting app: {app_dir}")
-                            shutil.rmtree(app_dir)
-                        else:
-                            target_apk.unlink()
+                self._remove_target_apks(target_apks)
+
+            # Method 2: If only path provided, find pkg_name from stock first
+            elif app_path_str:
+                # Find APK in stock to get package_name
+                stock_path = self.ctx.stock.extracted_dir / app_path_str
+                if stock_path.is_dir():
+                    # Find any APK in the directory
+                    for apk_file in stock_path.rglob("*.apk"):
+                        stock_pkg = self.ctx.syncer._get_apk_package_name(apk_file)
+                        if stock_pkg:
+                            self.logger.debug(
+                                f"Found package {stock_pkg} from stock path {app_path_str}"
+                            )
+                            # Find and remove all matching APKs in target
+                            target_apks = self.ctx.syncer.find_apks_by_package(
+                                stock_pkg, self.ctx.target_dir
+                            )
+                            if target_apks:
+                                self.logger.info(
+                                    f"Removing conflicting app by path {app_path_str} (package: {stock_pkg})"
+                                )
+                                self._remove_target_apks(target_apks)
+                            break
+                elif stock_path.exists() and stock_path.suffix == ".apk":
+                    stock_pkg = self.ctx.syncer._get_apk_package_name(stock_path)
+                    if stock_pkg:
+                        target_apks = self.ctx.syncer.find_apks_by_package(
+                            stock_pkg, self.ctx.target_dir
+                        )
+                        if target_apks:
+                            self.logger.info(
+                                f"Removing conflicting app by path {app_path_str} (package: {stock_pkg})"
+                            )
+                            self._remove_target_apks(target_apks)
 
         extracted_count = 0
         extracted_items: List[Path] = []
