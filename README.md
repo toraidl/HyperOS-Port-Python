@@ -204,7 +204,11 @@ Restores **China-exclusive features** (NFC, Mi Wallet, XiaoAi) to EU/Global ROMs
 1. **Enable**: Set `"enable_eu_localization": true` in `features.json`.
 2. **Generate Bundle**:
    ```bash
+   # Generate ZIP bundle (Default)
    python3 tools/generate_eu_bundle.py --rom <CN_ROM.zip> --config devices/common/eu_bundle_config.json
+
+   # Generate folder only (For manual modification)
+   python3 tools/generate_eu_bundle.py --rom <CN_ROM.zip> --config devices/common/eu_bundle_config.json --no-zip
    ```
 3. **Apply**:
    ```bash

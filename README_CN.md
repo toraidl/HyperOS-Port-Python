@@ -203,7 +203,11 @@ sudo python3 main.py --stock stock.zip --port port.zip --pack-type super --fs-ty
 1. **启用**: 在 `features.json` 中设置 `"enable_eu_localization": true`。
 2. **生成资源包**:
    ```bash
+   # 生成 ZIP 包 (默认)
    python3 tools/generate_eu_bundle.py --rom <CN_ROM.zip> --config devices/common/eu_bundle_config.json
+
+   # 仅生成文件夹 (方便手动添加缺失的 APK)
+   python3 tools/generate_eu_bundle.py --rom <CN_ROM.zip> --config devices/common/eu_bundle_config.json --no-zip
    ```
 3. **应用**:
    ```bash
