@@ -31,6 +31,13 @@ class FrameworkTasks(FrameworkModifierBase):
         if not jar_path:
             return
 
+        # Check cache first
+        cached_jar = self._get_cached_jar("miui-services.jar")
+        if cached_jar:
+            self.logger.info(f"Using cached modified miui-services.jar")
+            shutil.copy2(cached_jar, jar_path)
+            return
+
         self.logger.info(f"Modifying {jar_path.name}...")
         work_dir = self.temp_dir / "miui-services"
         self._apkeditor_decode(jar_path, work_dir)
@@ -106,10 +113,20 @@ class FrameworkTasks(FrameworkModifierBase):
 
         self._apkeditor_build(work_dir, jar_path)
 
+        # Save to cache
+        self._save_jar_cache("miui-services.jar", jar_path)
+
     def _mod_services(self) -> None:
         """Modify services.jar for signature and package verification bypass."""
         jar_path = self._find_file(self.ctx.target_dir, "services.jar")
         if not jar_path:
+            return
+
+        # Check cache first
+        cached_jar = self._get_cached_jar("services.jar")
+        if cached_jar:
+            self.logger.info(f"Using cached modified services.jar")
+            shutil.copy2(cached_jar, jar_path)
             return
 
         self.logger.info(f"Modifying {jar_path.name}...")
@@ -156,6 +173,9 @@ class FrameworkTasks(FrameworkModifierBase):
         )
 
         self._apkeditor_build(work_dir, jar_path)
+
+        # Save to cache
+        self._save_jar_cache("services.jar", jar_path)
 
     def _mod_framework(self) -> None:
         """Modify framework.jar for signature bypass and PIF injection."""

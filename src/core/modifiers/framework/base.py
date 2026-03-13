@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import re
 import shutil
+import hashlib
+import json
+from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from src.utils.shell import ShellRunner
 from src.core.modifiers.base_modifier import BaseModifier
@@ -19,6 +22,9 @@ if TYPE_CHECKING:
 class FrameworkModifierBase(BaseModifier):
     """Base class for framework-level modifications with utility methods."""
 
+    # Cache version for JAR modifications
+    jar_cache_version: str = "1.0"
+
     def __init__(self, context: PortingContext) -> None:
         super().__init__(context, "FrameworkModifier")
         self.shell = ShellRunner()
@@ -29,6 +35,95 @@ class FrameworkModifierBase(BaseModifier):
         self.baksmali_path = self.bin_dir / "baksmali.jar"
 
         self.temp_dir = self.ctx.target_dir.parent / "temp_modifier"
+
+    def _get_jar_cache_key(self, jar_name: str) -> Optional[str]:
+        """Generate cache key for JAR modification.
+
+        Uses Port ROM hash instead of JAR hash to avoid cache misses
+        when the JAR has already been modified.
+
+        Args:
+            jar_name: Name of the JAR file (e.g., "services.jar")
+
+        Returns:
+            Cache key string or None if caching not available
+        """
+        if not hasattr(self.ctx, "cache_manager") or not self.ctx.cache_manager:
+            return None
+
+        try:
+            rom_hash = self.ctx.cache_manager._compute_rom_hash(self.ctx.port.path)
+        except (FileNotFoundError, AttributeError):
+            return None
+
+        # Combine: ROM hash, JAR name, modifier class, cache version
+        return f"{rom_hash}_{jar_name}_FrameworkModifier_v{self.jar_cache_version}"
+
+    def _get_cached_jar(self, jar_name: str) -> Optional[Path]:
+        """Check if a cached modified JAR exists.
+
+        Args:
+            jar_name: Name of the JAR file
+
+        Returns:
+            Path to cached JAR or None
+        """
+        if not hasattr(self.ctx, "cache_manager") or not self.ctx.cache_manager:
+            return None
+
+        cache_key = self._get_jar_cache_key(jar_name)
+        if not cache_key:
+            return None
+
+        # Use shortened cache key for directory name
+        cache_dir = self.ctx.cache_manager._get_apk_cache_dir(cache_key[:32]) / cache_key
+
+        cached_jar = cache_dir / "modified.jar"
+        if cached_jar.exists():
+            return cached_jar
+        return None
+
+    def _save_jar_cache(self, jar_name: str, jar_path: Path) -> bool:
+        """Save modified JAR to cache.
+
+        Args:
+            jar_name: Name of the JAR file
+            jar_path: Path to the modified JAR
+
+        Returns:
+            True if saved successfully
+        """
+        if not hasattr(self.ctx, "cache_manager") or not self.ctx.cache_manager:
+            return False
+
+        cache_key = self._get_jar_cache_key(jar_name)
+        if not cache_key:
+            return False
+
+        try:
+            # Use shortened cache key for directory name
+            cache_dir = self.ctx.cache_manager._get_apk_cache_dir(cache_key[:32]) / cache_key
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            cached_jar = cache_dir / "modified.jar"
+            shutil.copy2(jar_path, cached_jar)
+
+            # Save metadata
+            metadata = {
+                "cache_key": cache_key,
+                "jar_name": jar_name,
+                "modifier_class": "FrameworkModifier",
+                "cache_version": self.jar_cache_version,
+                "cached_at": datetime.now().isoformat(),
+            }
+            (cache_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+            self.logger.debug(f"Cached modified JAR: {jar_name}")
+            return True
+
+        except Exception as e:
+            self.logger.warning(f"Failed to cache JAR {jar_name}: {e}")
+            return False
 
     def _run_smalikit(self, **kwargs) -> None:
         """Run SmaliKit with given arguments."""
