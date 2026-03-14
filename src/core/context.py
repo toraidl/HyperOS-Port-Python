@@ -368,21 +368,30 @@ class PortingContext:
         )
         self.logger.info(f"Security Patch: {self.security_patch}")
 
-        # 7. EU ROM Detection
-        # Check filename, build host, or mod_device
+        # 7. EU/Global ROM Detection
+        # EU ROM: Check filename or build host for xiaomi.eu
         build_host: Optional[str] = self.port.get_prop("ro.build.host", "")
         mod_device: Optional[str] = self.port.get_prop("ro.product.mod_device", "")
 
-        if (
-            "xiaomi.eu" in self.port.path.name.lower()
-            or "xiaomi.eu" in (build_host or "").lower()
-            or (mod_device and mod_device.endswith("_global"))
-        ):
+        # Detect EU ROM (xiaomi.eu)
+        if "xiaomi.eu" in self.port.path.name.lower() or "xiaomi.eu" in (build_host or "").lower():
             self.is_port_eu_rom: bool = True
         else:
             self.is_port_eu_rom = False
 
-        self.logger.info(f"Is Port EU ROM: {self.is_port_eu_rom}")
+        # Detect Global ROM (mod_device contains _global, e.g., xiaomi.eu_global)
+        if mod_device and "_global" in mod_device:
+            self.is_port_global_rom: bool = True
+        else:
+            self.is_port_global_rom = False
+
+        # For backward compatibility: is_port_eu_rom is True for both EU and Global
+        if self.is_port_global_rom and not self.is_port_eu_rom:
+            self.is_port_eu_rom = True
+
+        self.logger.info(
+            f"Is Port EU ROM: {self.is_port_eu_rom}, Global ROM: {self.is_port_global_rom}"
+        )
 
     def get_target_prop_file(self, part_name: str) -> Optional[Path]:
         """
