@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import shutil
-import logging
 import concurrent.futures
+import logging
+import platform
+import shutil
 import subprocess
 from pathlib import Path
-import platform
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from src.core.rom import RomPackage
-from src.utils.sync_engine import ROMSyncEngine
 from src.utils.shell import ShellRunner
+from src.utils.sync_engine import ROMSyncEngine
 
 if TYPE_CHECKING:
     from src.core.cache_manager import PortRomCacheManager
@@ -102,7 +102,7 @@ class PortingContext:
         if not self.tools.magiskboot.exists():
             self.logger.warning(f"magiskboot not found at {self.tools.magiskboot}")
 
-    def initialize_target(self) -> None:
+    def initialize_target(self, *, clean_existing: bool = False) -> None:
         """
         Initialize target workspace (Parallel optimized).
         1. Define partition sources (Stock vs Port).
@@ -111,10 +111,8 @@ class PortingContext:
         """
         self.logger.info(f"Initializing Target Workspace at {self.target_dir}")
 
-        # Clean old data (optional)
-        if self.target_dir.exists():
+        if self.target_dir.exists() and clean_existing:
             shutil.rmtree(self.target_dir)
-            pass
         self.target_dir.mkdir(parents=True, exist_ok=True)
         self.target_config_dir.mkdir(parents=True, exist_ok=True)
         self.repack_images_dir.mkdir(parents=True, exist_ok=True)

@@ -165,7 +165,7 @@ def execute_porting(args, logger: logging.Logger) -> int:
     ctx = PortingContext(stock, port, target_work_dir, is_official_modify=is_official_modify)
     ctx.cache_manager = cache_manager
     ctx.eu_bundle = args.eu_bundle
-    ctx.initialize_target()
+    ctx.initialize_target(clean_existing=True)
 
     stock_device_code = (
         stock.get_prop("ro.product.name_for_attestation")
