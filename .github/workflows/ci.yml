@@ -36,6 +36,8 @@ jobs:
             tests \
             src/app \
             src/core/context.py \
+            src/core/tooling.py \
+            src/core/workspace.py \
             src/core/modifiers/__init__.py \
             src/core/modifiers/plugin_system.py \
             src/core/modifiers/unified_modifier.py

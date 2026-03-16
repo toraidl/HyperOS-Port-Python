@@ -87,6 +87,8 @@ python3 -m venv .venv
   tests \
   src/app \
   src/core/context.py \
+  src/core/tooling.py \
+  src/core/workspace.py \
   src/core/modifiers/__init__.py \
   src/core/modifiers/plugin_system.py \
   src/core/modifiers/unified_modifier.py
@@ -285,7 +287,7 @@ This project uses several tools to maintain code quality:
 | Tool | Purpose | Command |
 |------|---------|---------|
 | **Black** | Code formatting | `.venv/bin/python -m black src tests main.py` |
-| **Ruff** | Fast Python linting | `.venv/bin/python -m ruff check main.py tests src/app src/core/context.py src/core/modifiers/__init__.py src/core/modifiers/plugin_system.py src/core/modifiers/unified_modifier.py` |
+| **Ruff** | Fast Python linting | `.venv/bin/python -m ruff check main.py tests src/app src/core/context.py src/core/tooling.py src/core/workspace.py src/core/modifiers/__init__.py src/core/modifiers/plugin_system.py src/core/modifiers/unified_modifier.py` |
 
 ### Developer Self-Check
 
@@ -298,6 +300,8 @@ Run the same checks as CI before opening a pull request:
   tests \
   src/app \
   src/core/context.py \
+  src/core/tooling.py \
+  src/core/workspace.py \
   src/core/modifiers/__init__.py \
   src/core/modifiers/plugin_system.py \
   src/core/modifiers/unified_modifier.py

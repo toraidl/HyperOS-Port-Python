@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
-import platform
-import shutil
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from src.core.rom import RomPackage
+from src.core.tooling import resolve_tooling
+from src.core.workspace import (
+    build_partition_layout,
+    copy_firmware_images,
+    install_partition,
+    prepare_target_directories,
+)
 from src.utils.shell import ShellRunner
 from src.utils.sync_engine import ROMSyncEngine
 
@@ -47,60 +51,10 @@ class PortingContext:
         self.eu_bundle: str | None = None
 
     def _init_tools(self) -> None:
-        """
-        Auto-detect system environment and set global tool paths.
-        """
-        system: str = platform.system().lower()  # windows, linux, darwin
-        machine: str = platform.machine().lower()  # x86_64, amd64, aarch64, arm64
-
-        # 1. Unify architecture name
-        if machine in ["amd64", "x86_64"]:
-            arch: str = "x86_64"
-        elif machine in ["aarch64", "arm64"]:
-            arch = "arm64"
-        else:
-            arch = "x86_64"  # Default fallback
-
-        # 2. Determine platform directory and extension
-        if system == "windows":
-            plat_dir: str = "windows"
-            exe_ext: str = ".exe"
-        elif system == "linux":
-            plat_dir = "linux"
-            exe_ext = ""
-        elif system == "darwin":
-            plat_dir = "macos"
-            exe_ext = ""
-        else:
-            self.logger.warning(f"Unknown system: {system}, defaulting to Linux.")
-            plat_dir = "linux"
-            exe_ext = ""
-
-        # 3. Set platform specific bin directory (e.g. bin/linux/x86_64)
-        self.platform_bin_dir: Path = self.bin_root / plat_dir / arch
-
-        if not self.platform_bin_dir.exists():
-            # Try fallback to bin/linux
-            fallback: Path = self.bin_root / plat_dir
-            if fallback.exists():
-                self.platform_bin_dir = fallback
-
-        self.logger.info(f"Platform Binary Dir: {self.platform_bin_dir}")
-
-        # 4. Define global tools (self.tools)
-        self.tools: SimpleNamespace = SimpleNamespace()
-
-        # >> Native tools
-        self.tools.magiskboot = self.platform_bin_dir / f"magiskboot{exe_ext}"
-        self.tools.aapt2 = self.platform_bin_dir / f"aapt2{exe_ext}"
-
-        # >> Java tools
-        self.tools.apktool_jar = self.bin_root / "apktool" / "apktool_2.12.1.jar"  # Example
-        self.tools.apkeditor_jar = self.bin_root / "APKEditor.jar"
-
-        # Check critical tools
-        if not self.tools.magiskboot.exists():
-            self.logger.warning(f"magiskboot not found at {self.tools.magiskboot}")
+        """Resolve platform-specific tooling paths."""
+        resolved_tooling = resolve_tooling(self.project_root, self.logger)
+        self.platform_bin_dir = resolved_tooling.platform_bin_dir
+        self.tools = resolved_tooling.tools
 
     def initialize_target(self, *, clean_existing: bool = False) -> None:
         """
@@ -111,26 +65,8 @@ class PortingContext:
         """
         self.logger.info(f"Initializing Target Workspace at {self.target_dir}")
 
-        if self.target_dir.exists() and clean_existing:
-            shutil.rmtree(self.target_dir)
-        self.target_dir.mkdir(parents=True, exist_ok=True)
-        self.target_config_dir.mkdir(parents=True, exist_ok=True)
-        self.repack_images_dir.mkdir(parents=True, exist_ok=True)
-
-        partition_layout: Dict[str, RomPackage] = {
-            # Low-level drivers -> From Stock
-            "vendor": self.stock,
-            "odm": self.stock,
-            "vendor_dlkm": self.stock,
-            "odm_dlkm": self.stock,
-            "system_dlkm": self.stock,
-            # System partitions -> From Port
-            "system": self.port,
-            "system_ext": self.port,
-            "product": self.port,
-            "mi_ext": self.port,
-            "product_dlkm": self.port,
-        }
+        prepare_target_directories(self, clean_existing=clean_existing)
+        partition_layout = build_partition_layout(self)
 
         # Use ThreadPoolExecutor for parallel partition installation
         max_workers: int = 4
@@ -146,86 +82,19 @@ class PortingContext:
                     self.logger.error(f"Partition install failed: {e}")
                     # raise e # Optional
 
-        self._copy_firmware_images(list(partition_layout.keys()))
+        self._copy_firmware_images(list(partition_layout))
 
         self.get_rom_info()
 
         self.logger.info("Target Workspace Initialized.")
 
     def _install_partition(self, part_name: str, source_rom: RomPackage) -> None:
-        """Install partition from source ROM to Target"""
-
-        # 1. Extract source partition
-        src_dir: Optional[Path] = source_rom.extract_partition_to_file(part_name)
-
-        if not src_dir or not src_dir.exists():
-            self.logger.warning(f"Partition {part_name} missing in {source_rom.label}, skipping.")
-            return
-
-        # 2. Copy partition files to target directory
-        dest_dir: Path = self.target_dir / f"{part_name}"
-
-        if dest_dir.exists():
-            shutil.rmtree(dest_dir)  # Remove existing directory
-
-        try:
-            # Use cp -a for archive mode and --reflink=auto for CoW optimization
-            cmd: List[str] = ["cp", "-a", "--reflink=auto", str(src_dir), str(dest_dir)]
-            self.shell.run(cmd)
-
-        except Exception as e:
-            # Fallback to shutil if cp fails
-            self.logger.error(f"Native copy failed, falling back to shutil: {e}")
-            try:
-                shutil.copytree(src_dir, dest_dir, symlinks=True, dirs_exist_ok=True)
-            except Exception as e2:
-                self.logger.error(f"Copy failed for {part_name}: {e2}")
-
-        # 3. Copy partition configuration files
-        src_fs: Path
-        src_fc: Path
-        src_fs, src_fc = source_rom.get_config_files(part_name)
-
-        if src_fs.exists():
-            shutil.copy2(src_fs, self.target_config_dir / f"{part_name}_fs_config")
-        else:
-            self.logger.warning(f"Missing fs_config for {part_name} in {source_rom.label}")
-
-        if src_fc.exists():
-            shutil.copy2(src_fc, self.target_config_dir / f"{part_name}_file_contexts")
-        else:
-            self.logger.warning(f"Missing file_contexts for {part_name} in {source_rom.label}")
+        """Install partition from source ROM to target workspace."""
+        install_partition(self, part_name, source_rom)
 
     def _copy_firmware_images(self, exclude_list: List[str]) -> None:
-        """
-        Copy firmware images from Base ROM that don't need modification.
-        Iterate .img files in stock/images/, excluding logical partitions.
-        """
-        self.logger.info("Copying firmware images from Base ROM...")
-
-        # Ensure stock images directory exists
-        if not self.stock.images_dir.exists():
-            self.logger.warning("Stock images directory not found! Firmware copy skipped.")
-            return
-
-        copied_count: int = 0
-        for img_file in self.stock.images_dir.glob("*.img"):
-            part_name: str = img_file.stem  # Get filename without extension (e.g. "xbl")
-
-            # Skip handled partitions, accounting for A/B slots
-            clean_name: str = part_name.replace("_a", "").replace("_b", "")
-
-            if clean_name in exclude_list:
-                continue
-
-            # Remaining files are Firmware (xbl, tz, boot, dtbo, etc.)
-            dest_path: Path = self.repack_images_dir / img_file.name
-
-            self.logger.debug(f"Copying firmware: {img_file.name}")
-            shutil.copy2(img_file, dest_path)
-            copied_count += 1
-
-        self.logger.info(f"Copied {copied_count} firmware images to {self.repack_images_dir}")
+        """Copy firmware images from the stock ROM into the target workspace."""
+        copy_firmware_images(self, exclude_list)
 
     def get_rom_info(self) -> None:
         """
