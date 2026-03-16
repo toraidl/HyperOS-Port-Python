@@ -67,7 +67,7 @@ class TestShellRunner:
             args="echo test", returncode=0, stdout="test\n", stderr=""
         )
 
-        result = runner.run("echo test", shell=True)
+        runner.run("echo test", shell=True)
 
         mock_run.assert_called_once()
 
@@ -153,7 +153,7 @@ class TestShellRunner:
                 args=["java", "-jar", "test.jar", "arg1"], returncode=0, stdout="", stderr=""
             )
 
-            result = runner.run_java_jar("test.jar", ["arg1"])
+            runner.run_java_jar("test.jar", ["arg1"])
 
             mock_run.assert_called_once()
             call_args = mock_run.call_args[0][0]

@@ -12,96 +12,90 @@ This package provides a modular approach to ROM modification:
 
 # Core modifier classes
 from src.core.modifiers.base_modifier import BaseModifier
+from src.core.modifiers.firmware_modifier import FirmwareModifier
+from src.core.modifiers.framework_modifier import FrameworkModifier
+from src.core.modifiers.rom_modifier import RomModifier
 from src.core.modifiers.smali_args import SmaliArgs
 from src.core.modifiers.system_modifier import SystemModifier
-from src.core.modifiers.framework_modifier import FrameworkModifier
-from src.core.modifiers.firmware_modifier import FirmwareModifier
-from src.core.modifiers.rom_modifier import RomModifier
-
-# Unified modifier (combines system + APK)
-from src.core.modifiers.unified_modifier import (
-    UnifiedModifier,
-    SystemModifier,  # Backward compatibility
-    ApkModifier,
-)
+from src.core.modifiers.unified_modifier import ApkModifier, UnifiedModifier
 
 # Plugin system
 from src.core.modifiers.plugin_system import (
     ModifierPlugin,
-    PluginManager,
     ModifierRegistry,
+    PluginConfig,
+    PluginManager,
     create_backup_hook,
     create_backup_hook_factory,
     load_plugins_from_config,
-    PluginConfig,
 )
 
 # Transaction system
 from src.core.modifiers.transaction import (
-    TransactionManager,
-    Transaction,
     ModificationRecord,
     RollbackContext,
+    Transaction,
+    TransactionManager,
 )
 
 # Built-in system plugins
 from src.core.modifiers.plugins import (
-    WildBoostPlugin,
     EULocalizationPlugin,
     FeatureUnlockPlugin,
-    VNDKFixPlugin,
     FileReplacementPlugin,
+    VNDKFixPlugin,
+    WildBoostPlugin,
 )
 
 # APK plugins
 from src.core.modifiers.plugins.apk import (
     ApkModifierPlugin,
     ApkModifierRegistry,
+    DevicesOverlayModifier,
     InstallerModifier,
-    SecurityCenterModifier,
-    SettingsModifier,
     JoyoseModifier,
     PowerKeeperModifier,
-    DevicesOverlayModifier,
+    SecurityCenterModifier,
+    SettingsModifier,
 )
 
 __all__ = [
     # Core modifiers
-    'BaseModifier',
-    'SmaliArgs',
-    'SystemModifier',
-    'FrameworkModifier',
-    'FirmwareModifier',
-    'RomModifier',
+    "BaseModifier",
+    "SmaliArgs",
+    "SystemModifier",
+    "FrameworkModifier",
+    "FirmwareModifier",
+    "RomModifier",
     # Unified modifier
-    'UnifiedModifier',
-    'ApkModifier',
+    "UnifiedModifier",
+    "ApkModifier",
     # Plugin system
-    'ModifierPlugin',
-    'PluginManager',
-    'ModifierRegistry',
-    'create_backup_hook',
-    'create_backup_hook_factory',
-    'load_plugins_from_config',
-    'PluginConfig',
+    "ModifierPlugin",
+    "PluginManager",
+    "ModifierRegistry",
+    "create_backup_hook",
+    "create_backup_hook_factory",
+    "load_plugins_from_config",
+    "PluginConfig",
     # Transaction system
-    'TransactionManager',
-    'Transaction',
-    'ModificationRecord',
-    'RollbackContext',
+    "TransactionManager",
+    "Transaction",
+    "ModificationRecord",
+    "RollbackContext",
     # System plugins
-    'WildBoostPlugin',
-    'EULocalizationPlugin',
-    'FeatureUnlockPlugin',
-    'VNDKFixPlugin',
-    'FileReplacementPlugin',
+    "WildBoostPlugin",
+    "EULocalizationPlugin",
+    "FeatureUnlockPlugin",
+    "VNDKFixPlugin",
+    "FileReplacementPlugin",
     # APK plugins
-    'ApkModifierPlugin',
-    'ApkModifierRegistry',
-    'InstallerModifier',
-    'SecurityCenterModifier',
-    'SettingsModifier',
-    'JoyoseModifier',
-    'PowerKeeperModifier',
-    'DevicesOverlayModifier',
+    "ApkModifierPlugin",
+    "ApkModifierRegistry",
+    "InstallerModifier",
+    "SecurityCenterModifier",
+    "SettingsModifier",
+    "JoyoseModifier",
+    "PowerKeeperModifier",
+    "DevicesOverlayModifier",
 ]

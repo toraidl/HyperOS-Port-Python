@@ -22,11 +22,17 @@ MANIFEST
 # Virtual Environment
 .env
 .venv
+.venv/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+coverage.xml
+.coverage
 
 # Android/HyperOS Porting specific
 otatools/
@@ -60,3 +66,4 @@ mk_erofs.sh
 .cache/
 temp/
 .omg/
+.omx/

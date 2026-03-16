@@ -1,6 +1,6 @@
 # 🚀 HyperOS Porting Tool (Python)
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-Unlicense-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey.svg)](https://www.ubuntu.com/)
 
@@ -49,7 +49,7 @@ A powerful, automated Python-based tool for porting HyperOS ROMs across Xiaomi/R
 
 ## ⚙️ Prerequisites
 
-- **Python 3.8+**
+- **Python 3.10+**
 - **Linux Environment** (Ubuntu 20.04+ recommended)
 - **Sudo Access** (required for partition mounting/unmounting)
 - **OTA Tools**: Included in the `otatools/` directory.
@@ -60,7 +60,7 @@ A powerful, automated Python-based tool for porting HyperOS ROMs across Xiaomi/R
 
 ### 1. Installation
 ```bash
-git clone https://github.com/yourusername/HyperOS-Port-Python.git
+git clone https://github.com/toraidl/HyperOS-Port-Python.git
 cd HyperOS-Port-Python
 # Install dependencies
 pip install -r requirements.txt
@@ -69,17 +69,21 @@ pip install -r requirements.txt
 ### Development Setup (Optional)
 If you want to contribute or run tests:
 ```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
+# Create a local virtual environment
+python3 -m venv .venv
+
+# Install development and test dependencies
+.venv/bin/python -m pip install -r requirements-dev.txt -r requirements-test.txt
 
 # Run tests
-pytest tests/ -v
+.venv/bin/python -m pytest -q
 
 # Code formatting
-black src/ --line-length 100
+.venv/bin/python -m black src tests main.py
 
 # Linting
-ruff check src/
+.venv/bin/python -m ruff check main.py tests
+
 ```
 
 ### 2. Basic Usage
@@ -256,13 +260,13 @@ Run the test suite with pytest:
 
 ```bash
 # Run all tests
-pytest tests/ -v
+.venv/bin/python -m pytest -q
 
 # Run specific test file
-pytest tests/core/test_config_loader.py -v
+.venv/bin/python -m pytest tests/core/test_config_loader.py -q
 
 # Run with coverage
-pytest tests/ --cov=src --cov-report=html
+.venv/bin/python -m pytest tests/ --cov=src --cov-report=html
 ```
 
 ---
@@ -273,9 +277,18 @@ This project uses several tools to maintain code quality:
 
 | Tool | Purpose | Command |
 |------|---------|---------|
-| **Black** | Code formatting | `black src/ --line-length 100` |
-| **Ruff** | Fast Python linting | `ruff check src/` |
-| **MyPy** | Type checking | `mypy src/ --ignore-missing-imports` |
+| **Black** | Code formatting | `.venv/bin/python -m black src tests main.py` |
+| **Ruff** | Fast Python linting | `.venv/bin/python -m ruff check main.py tests` |
+
+### Developer Self-Check
+
+Run the same checks as CI before opening a pull request:
+
+```bash
+.venv/bin/python -m compileall -q src tests main.py
+.venv/bin/python -m ruff check main.py tests
+.venv/bin/python -m pytest -q
+```
 
 ### Pre-commit Hooks (Optional)
 

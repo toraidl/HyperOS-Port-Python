@@ -4,11 +4,12 @@ Tests for PortRomCacheManager
 Run with: pytest tests/core/test_cache_manager.py -v
 """
 
-import pytest
 import tempfile
-import shutil
 from pathlib import Path
-from src.core.cache_manager import PortRomCacheManager, FileLock, CacheMetadata
+
+import pytest
+
+from src.core.cache_manager import CacheMetadata, FileLock, PortRomCacheManager
 
 
 class TestPortRomCacheManager:
@@ -29,7 +30,7 @@ class TestPortRomCacheManager:
             test_file = Path(tmp) / "test.zip"
             test_file.write_bytes(b"test content for hashing")
 
-            cache = PortRomCacheManager(tmp)
+            cache = PortRomCacheManager(tmp, cache_partitions=True)
             hash1 = cache._compute_rom_hash(test_file)
             hash2 = cache._compute_rom_hash(test_file)
 
@@ -43,7 +44,7 @@ class TestPortRomCacheManager:
             test_file = Path(tmp) / "test.zip"
             test_file.write_bytes(b"test")
 
-            cache = PortRomCacheManager(tmp)
+            cache = PortRomCacheManager(tmp, cache_partitions=True)
             assert not cache.is_partition_cached(test_file, "system")
 
     def test_store_and_restore_partition(self):
@@ -60,7 +61,7 @@ class TestPortRomCacheManager:
             (source_dir / "subdir").mkdir()
             (source_dir / "subdir" / "file2.txt").write_text("content2")
 
-            cache = PortRomCacheManager(tmp)
+            cache = PortRomCacheManager(tmp, cache_partitions=True)
 
             # Store partition
             result = cache.store_partition(test_rom, "system", source_dir)
@@ -86,7 +87,7 @@ class TestPortRomCacheManager:
             source_dir = Path(tmp) / "source"
             source_dir.mkdir()
 
-            cache = PortRomCacheManager(tmp)
+            cache = PortRomCacheManager(tmp, cache_partitions=True)
             cache.store_partition(test_rom, "system", source_dir)
 
             assert cache.is_partition_cached(test_rom, "system")
@@ -103,7 +104,7 @@ class TestPortRomCacheManager:
             source_dir = Path(tmp) / "source"
             source_dir.mkdir()
 
-            cache = PortRomCacheManager(tmp)
+            cache = PortRomCacheManager(tmp, cache_partitions=True)
             cache.store_partition(test_rom, "system", source_dir)
             cache.store_partition(test_rom, "product", source_dir)
 
