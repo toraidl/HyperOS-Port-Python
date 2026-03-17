@@ -1,26 +1,25 @@
 # 🚀 HyperOS Porting Tool (Python)
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-Unlicense-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey.svg)](https://www.ubuntu.com/)
+[![GitHub stars](https://img.shields.io/github/stars/toraidl/HyperOS-Port-Python?style=flat)](https://github.com/toraidl/HyperOS-Port-Python/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/toraidl/HyperOS-Port-Python?style=flat)](https://github.com/toraidl/HyperOS-Port-Python/network/members)
 
 [中文 (Chinese)](README.md) | **English**
 
-A powerful, automated Python-based tool for porting HyperOS ROMs across Xiaomi/Redmi devices. This tool handles the entire lifecycle: unpacking, smart patching, feature restoration, repacking, and signing.
+A HyperOS ROM porting tool for Xiaomi/Redmi devices. It covers the common workflow: unpacking, patch processing, feature adaptation, repacking, and OTA package output.
 
 ---
 
 ## 🌟 Key Features
 
-- 🛠️ **Fully Automated**: End-to-end porting process from stock/port ZIPs to flashable output.
-- 💉 **Smart Patching**: Automated modification of firmware, system, framework, and ROM properties.
-- 🧬 **GKI Support**: Intelligent KernelSU injection for GKI 2.0 (5.10+) and standard GKI devices.
+- 🛠️ **Workflow Automation**: From stock/port ZIPs to flashable output in one pipeline.
+- 💉 **System Patching**: Rule-based modifications for firmware, system, framework, and ROM properties.
+- 🧬 **GKI Support**: KernelSU injection support for GKI 2.0 (5.10+) and standard GKI devices.
 - 🔓 **Android 16 Ready**: Specialized `vendor_boot` fstab patching for KMI 6.12 to prevent fastboot bootloops.
-- 🚀 **Wild Boost**: Auto-installation of performance modules with kernel version detection.
+- 🚀 **Wild Boost (Rage Engine)**: Ports the Redmi-specific rage engine to Xiaomi targets; requires matching kernel versions. Currently validated on Xiaomi 12S and Xiaomi 13.
 - 🧩 **Modular Configuration**: Toggle features (AOD, AI Engine, etc.) via simple JSON files.
 - 🌏 **EU Localization**: Restore China-exclusive features (NFC, XiaoAi) to Global/EU bases.
 - 📦 **Multi-Format Support**: Generate `payload.bin` (Recovery/OTA) or `super.img` (Hybrid/Fastboot) formats.
-- 🔒 **Auto-Signing**: Automatically signs the final flashable ZIP for seamless installation.
+- 🔒 **Official OTA Upgrade Path**: Produces packages compatible with the official OTA format, enabling AB upgrades via the official Updater app; rollback is available if issues occur.
 
 ---
 
@@ -191,10 +190,10 @@ sudo python3 main.py --stock stock.zip --port port.zip --pack-type super --fs-ty
 Automatically installs performance boost modules based on kernel version.
 
 **Features:**
-- 📌 **Auto-detection**: Detects kernel version (5.10 / 5.15+)
+- 📌 **Auto-detection**: Detects kernel version (5.10 / 5.15)
 - 📌 **Smart Installation**:
   - Kernel 5.10: Installs to `vendor_boot` ramdisk
-  - Kernel 5.15+: Installs to `vendor_dlkm`
+  - Kernel 5.15: Installs to `vendor_dlkm`
 - 📌 **AVB Auto-disable**: Prevents bootloop after modification
 - 📌 **Device Spoofing**: HexPatch for `libmigui.so`
 - 📌 **Fallback**: `persist.sys.feas.enable=true` for newer systems

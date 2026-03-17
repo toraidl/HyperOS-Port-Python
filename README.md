@@ -1,26 +1,25 @@
 # 🚀 HyperOS 移植工具 (Python 版)
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-Unlicense-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey.svg)](https://www.ubuntu.com/)
+[![GitHub stars](https://img.shields.io/github/stars/toraidl/HyperOS-Port-Python?style=flat)](https://github.com/toraidl/HyperOS-Port-Python/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/toraidl/HyperOS-Port-Python?style=flat)](https://github.com/toraidl/HyperOS-Port-Python/network/members)
 
 **中文 (Chinese)** | [English](README_EN.md)
 
-一个功能强大、自动化的 Python 移植工具，专为小米/红米设备的 HyperOS ROM 移植而设计。该工具涵盖了整个生命周期：解包、智能修补、功能恢复、重新打包和签名。
+一个面向小米/红米设备的 HyperOS ROM 移植工具。覆盖常见移植流程：解包、补丁处理、功能适配、重新打包与 OTA 升级包产出。
 
 ---
 
 ## 🌟 核心特性
 
-- 🛠️ **全自动化**: 从底包/移植包 ZIP 到最终可刷入 ZIP 的端到端移植流程。
-- 💉 **智能修补**: 自动修改固件、系统、框架和 ROM 属性。
-- 🧬 **GKI 支持**: 针对 GKI 2.0 (5.10+) 及标准 GKI 设备，提供智能 KernelSU 注入。
+- 🛠️ **流程自动化**: 从底包/移植包 ZIP 到可刷入产物的完整流程。
+- 💉 **系统补丁**: 按规则修改固件、系统、框架和 ROM 属性。
+- 🧬 **GKI 支持**: 针对 GKI 2.0 (5.10+) 及标准 GKI 设备提供 KernelSU 注入能力。
 - 🔓 **Android 16 支持**: 针对 KMI 6.12 提供专用的 `vendor_boot` fstab 修补，跳过标准 VBMETA 以防止 Fastboot 卡死。
-- 🚀 **Wild Boost**: 自动安装性能增强模块，支持内核版本检测。
+- 🚀 **Wild Boost（狂暴引擎）**: 将红米机型的狂暴引擎适配并移植到小米机型；要求内核版本一致，当前已验证小米 12S 与小米 13。
 - 🧩 **模块化配置**: 通过简单的 JSON 文件开启/关闭功能（AOD、AI 引擎等）。
 - 🌏 **EU 本地化**: 为 Global/EU 底包恢复国内特有功能（NFC、小米钱包、小爱同学）。
 - 📦 **多格式支持**: 支持生成 `payload.bin` (Recovery/OTA) 或 `super.img` (Hybrid/Fastboot) 格式。
-- 🔒 **自动签名**: 自动为最终生成的 ZIP 文件签名，确保无缝安装。
+- 🔒 **官方 OTA 升级链路**: 产出兼容官方 OTA 格式的包，可通过官方升级 App 执行 AB 升级；出现问题时可回滚。
 
 ---
 
@@ -48,7 +47,7 @@
 
 ## ⚙️ 前置条件
 
-- **Python 3.8+**
+- **Python 3.10+**
 - **Linux 环境** (推荐使用 Ubuntu 20.04+)
 - **Sudo 权限** (用于挂载/卸载镜像)
 - **OTA 工具**: 已内置在 `otatools/` 目录中。
@@ -185,14 +184,14 @@ sudo python3 main.py --stock <底包路径> --port <移植包路径> --pack-type
 sudo python3 main.py --stock stock.zip --port port.zip --pack-type super --fs-type ext4
 ```
 
-### 2. Wild Boost 支持
+### 2. 狂暴引擎支持
 根据内核版本自动安装性能增强模块。
 
 **功能特性:**
-- 📌 **自动检测**: 检测内核版本 (5.10 / 5.15+)
+- 📌 **自动检测**: 检测内核版本 (5.10 / 5.15)
 - 📌 **智能安装**:
   - 内核 5.10: 安装到 `vendor_boot` ramdisk
-  - 内核 5.15+: 安装到 `vendor_dlkm`
+  - 内核 5.15: 安装到 `vendor_dlkm`
 - 📌 **AVB 自动禁用**: 防止修改后无法启动
 - 📌 **设备伪装**: HexPatch `libmigui.so`
 - 📌 **备用方案**: `persist.sys.feas.enable=true` 用于新系统
@@ -234,7 +233,7 @@ sudo python3 main.py --stock stock.zip --port port.zip --pack-type super --fs-ty
 
 ## 🏮 EU 本地化 (恢复国内功能)
 
-为 EU/Global ROM 恢复 **中国国内特有的功能** (NFC, 小米钱包, 小爱同学)，同时保持 "国际版" 伪装。
+为 xiaomi.eu ROM 恢复 **中国国内特有的功能** (NFC, 小米钱包, 小爱同学)，同时保持 "国际版" 伪装。
 
 1. **启用**: 在 `features.json` 中设置 `"enable_eu_localization": true`。
 2. **生成资源包**:
