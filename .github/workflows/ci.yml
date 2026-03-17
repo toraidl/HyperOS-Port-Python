@@ -54,6 +54,7 @@ jobs:
             src/core/workspace.py \
             src/core/modifiers/__init__.py \
             src/core/modifiers/base_modifier.py \
+            src/core/modifiers/framework/base.py \
             src/core/modifiers/framework/modifier.py \
             src/core/modifiers/plugin_system.py \
             src/core/modifiers/smali_args.py \

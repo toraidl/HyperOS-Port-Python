@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
-import hashlib
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from src.utils.shell import ShellRunner
 from src.core.modifiers.base_modifier import BaseModifier
 from src.core.modifiers.smali_args import SmaliArgs
+from src.utils.shell import ShellRunner
 from src.utils.smalikit import SmaliKit
 
 if TYPE_CHECKING:
@@ -76,7 +75,7 @@ class FrameworkModifierBase(BaseModifier):
             return None
 
         # Use shortened cache key for directory name
-        cache_dir = self.ctx.cache_manager._get_apk_cache_dir(cache_key[:32]) / cache_key
+        cache_dir = Path(self.ctx.cache_manager._get_apk_cache_dir(cache_key[:32])) / cache_key
 
         cached_jar = cache_dir / "modified.jar"
         if cached_jar.exists():
@@ -102,7 +101,7 @@ class FrameworkModifierBase(BaseModifier):
 
         try:
             # Use shortened cache key for directory name
-            cache_dir = self.ctx.cache_manager._get_apk_cache_dir(cache_key[:32]) / cache_key
+            cache_dir = Path(self.ctx.cache_manager._get_apk_cache_dir(cache_key[:32])) / cache_key
             cache_dir.mkdir(parents=True, exist_ok=True)
 
             cached_jar = cache_dir / "modified.jar"
