@@ -1,11 +1,9 @@
 import json
 import os
-import time
 import re
-import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
+from pathlib import Path
+
 from src.core.config_merger import ConfigMerger
 from src.core.modifiers.plugin_system import ModifierPlugin, ModifierRegistry
 
@@ -265,7 +263,7 @@ class PropertyModifier(ModifierPlugin):
 
         # 1. Get density from base
         base_density = None
-        for part in ["product", "system"]:
+        for _part in ["product", "system"]:
             val = self.ctx.stock.get_prop("ro.sf.lcd_density")
             if val:
                 base_density = val
