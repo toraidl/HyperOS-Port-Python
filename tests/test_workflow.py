@@ -272,7 +272,22 @@ def test_execute_porting_generates_diff_report_when_enabled():
         patch("src.app.workflow.run_modification_phases"),
         patch("src.app.workflow.run_repacking"),
         patch("src.app.workflow.collect_artifact_state") as collect_artifact_state_mock,
-        patch("src.app.workflow.generate_diff_report", return_value={"summary": {}}) as generate_mock,
+        patch(
+            "src.app.workflow.generate_diff_report",
+            return_value={
+                "summary": {
+                    "files_added": 1,
+                    "files_removed": 0,
+                    "files_modified": 2,
+                    "prop_changes": 3,
+                    "apk_changes": 4,
+                    "risk_flags": 1,
+                },
+                "highlights": {
+                    "risk_flags": [{"code": "HIGH_IMPACT_PATH_CHANGED"}],
+                },
+            },
+        ) as generate_mock,
         patch("src.app.workflow.save_diff_report") as save_diff_report_mock,
     ):
         bootstrap.return_value.exit_code = None
@@ -296,3 +311,15 @@ def test_execute_porting_generates_diff_report_when_enabled():
     assert collect_artifact_state_mock.call_count == 2
     generate_mock.assert_called_once()
     save_diff_report_mock.assert_called_once()
+    logger.info.assert_any_call(
+        "Artifact diff summary: +%s -%s ~%s props=%s apks=%s risks=%s",
+        1,
+        0,
+        2,
+        3,
+        4,
+        1,
+    )
+    logger.warning.assert_any_call(
+        "Artifact diff risk flags: %s", "HIGH_IMPACT_PATH_CHANGED"
+    )

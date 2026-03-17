@@ -129,6 +129,40 @@ def run_repacking(
         packer.pack_ota_payload()
 
 
+def log_diff_report_summary(diff_report: dict[str, object], logger: logging.Logger) -> None:
+    """Log a compact summary for generated artifact diff reports."""
+    summary = diff_report.get("summary", {})
+    if not isinstance(summary, dict):
+        summary = {}
+
+    logger.info(
+        "Artifact diff summary: +%s -%s ~%s props=%s apks=%s risks=%s",
+        summary.get("files_added", 0),
+        summary.get("files_removed", 0),
+        summary.get("files_modified", 0),
+        summary.get("prop_changes", 0),
+        summary.get("apk_changes", 0),
+        summary.get("risk_flags", 0),
+    )
+
+    highlights = diff_report.get("highlights", {})
+    if not isinstance(highlights, dict):
+        return
+    risk_flags = highlights.get("risk_flags", [])
+    if not isinstance(risk_flags, list) or not risk_flags:
+        return
+
+    codes: list[str] = []
+    for flag in risk_flags:
+        if not isinstance(flag, dict):
+            continue
+        code = flag.get("code")
+        if isinstance(code, str):
+            codes.append(code)
+    if codes:
+        logger.warning("Artifact diff risk flags: %s", ", ".join(codes))
+
+
 def execute_porting(args, logger: logging.Logger) -> int:
     """Execute the end-to-end porting workflow and return a process exit code."""
     is_official_modify = args.port is None
@@ -243,6 +277,7 @@ def execute_porting(args, logger: logging.Logger) -> int:
         diff_report = generate_diff_report(baseline_artifact_state, final_artifact_state)
         report_path = save_diff_report(diff_report, args.diff_report)
         logger.info(f"Artifact diff report saved to: {report_path}")
+        log_diff_report_summary(diff_report, logger)
 
     logger.info("=" * 70)
     logger.info("Porting completed successfully!")
