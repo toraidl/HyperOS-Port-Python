@@ -5,7 +5,8 @@ Implements a flexible, extensible condition evaluation system.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
+
 from packaging.version import parse as parse_version
 
 
@@ -39,6 +40,26 @@ class BuildContext:
         if path not in self._file_cache:
             self._file_cache[path] = Path(path).exists()
         return self._file_cache[path]
+
+    @property
+    def portIsColorOS(self) -> bool:
+        """Backward-compatible alias for legacy rule schemas."""
+        return bool(self.is_port_eu_rom)
+
+    @property
+    def portIsColorOSGlobal(self) -> bool:
+        """Backward-compatible alias for legacy rule schemas."""
+        return bool(self.is_port_global_rom)
+
+    @property
+    def portIsOOS(self) -> bool:
+        """Backward-compatible alias for legacy rule schemas."""
+        return not bool(self.is_port_eu_rom or self.is_port_global_rom)
+
+    @property
+    def port_oplusrom_version(self) -> str:
+        """Backward-compatible alias for legacy rule schemas."""
+        return self.port_rom_version
 
 
 class ConditionStrategy(ABC):
@@ -216,11 +237,11 @@ class CompositeConditionStrategy(ConditionStrategy):
         if "rom_type" in condition:
             rom_type = condition["rom_type"]
             if rom_type == "ColorOS":
-                return ctx.portIsColorOS
+                return bool(ctx.portIsColorOS)
             elif rom_type == "ColorOS_Global":
-                return ctx.portIsColorOSGlobal
+                return bool(ctx.portIsColorOSGlobal)
             elif rom_type == "OxygenOS":
-                return ctx.portIsOOS
+                return bool(ctx.portIsOOS)
 
         # ROM version comparison
         if "rom_version" in condition:
