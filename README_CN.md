@@ -68,17 +68,53 @@ pip install -r requirements.txt
 ### 开发环境设置 (可选)
 如果你想参与贡献或运行测试：
 ```bash
-# 安装开发依赖
-pip install -r requirements-dev.txt
+# 创建本地虚拟环境
+python3 -m venv .venv
+
+# 安装开发和测试依赖
+.venv/bin/python -m pip install -r requirements-dev.txt -r requirements-test.txt
 
 # 运行测试
-pytest tests/ -v
+.venv/bin/python -m pytest -q
 
 # 代码格式化
-black src/ --line-length 100
+.venv/bin/python -m black src tests main.py
 
-# 代码检查
-ruff check src/
+# 代码检查（与 CI 对齐）
+.venv/bin/python -m ruff check \
+  main.py \
+  tests \
+  src/app \
+  src/core/cache_manager.py \
+  src/core/packer.py \
+  src/core/conditions.py \
+  src/core/context.py \
+  src/core/props.py \
+  src/core/config_loader.py \
+  src/core/config_merger.py \
+  src/core/rom/package.py \
+  src/core/rom/extractors.py \
+  src/core/rom/utils.py \
+  src/core/monitoring/__init__.py \
+  src/core/monitoring/console_ui.py \
+  src/core/monitoring/plugin_integration.py \
+  src/core/monitoring/workflow_integration.py \
+  src/core/rom_metadata.py \
+  src/core/tooling.py \
+  src/core/workspace.py \
+  src/core/modifiers/__init__.py \
+  src/core/modifiers/base_modifier.py \
+  src/core/modifiers/framework/base.py \
+  src/core/modifiers/framework/modifier.py \
+  src/core/modifiers/framework/tasks.py \
+  src/core/modifiers/plugin_system.py \
+  src/core/modifiers/plugins/feature_unlock.py \
+  src/core/modifiers/smali_args.py \
+  src/core/modifiers/transaction.py \
+  src/core/modifiers/unified_modifier.py
+
+# Curated 类型检查
+.venv/bin/python -m mypy --config-file mypy-curated.ini
 ```
 
 ### 2. 基本用法
@@ -272,9 +308,48 @@ pytest tests/ --cov=src --cov-report=html
 
 | 工具 | 用途 | 命令 |
 |------|------|------|
-| **Black** | 代码格式化 | `black src/ --line-length 100` |
-| **Ruff** | 快速 Python 检查 | `ruff check src/` |
-| **MyPy** | 类型检查 | `mypy src/ --ignore-missing-imports` |
+| **Black** | 代码格式化 | `.venv/bin/python -m black src tests main.py` |
+| **Ruff** | 快速 Python 检查 | `.venv/bin/python -m ruff check main.py tests src/app src/core/cache_manager.py src/core/packer.py src/core/conditions.py src/core/context.py src/core/props.py src/core/config_loader.py src/core/config_merger.py src/core/rom/package.py src/core/rom/extractors.py src/core/rom/utils.py src/core/monitoring/__init__.py src/core/monitoring/console_ui.py src/core/monitoring/plugin_integration.py src/core/monitoring/workflow_integration.py src/core/rom_metadata.py src/core/tooling.py src/core/workspace.py src/core/modifiers/__init__.py src/core/modifiers/base_modifier.py src/core/modifiers/framework/base.py src/core/modifiers/framework/modifier.py src/core/modifiers/framework/tasks.py src/core/modifiers/plugin_system.py src/core/modifiers/plugins/feature_unlock.py src/core/modifiers/smali_args.py src/core/modifiers/transaction.py src/core/modifiers/unified_modifier.py` |
+| **MyPy（Curated）** | 重构运行链路的类型检查 | `.venv/bin/python -m mypy --config-file mypy-curated.ini` |
+
+### 开发者自检（与 CI 一致）
+
+```bash
+.venv/bin/python -m compileall -q src tests main.py
+.venv/bin/python -m ruff check \
+  main.py \
+  tests \
+  src/app \
+  src/core/cache_manager.py \
+  src/core/packer.py \
+  src/core/conditions.py \
+  src/core/context.py \
+  src/core/props.py \
+  src/core/config_loader.py \
+  src/core/config_merger.py \
+  src/core/rom/package.py \
+  src/core/rom/extractors.py \
+  src/core/rom/utils.py \
+  src/core/monitoring/__init__.py \
+  src/core/monitoring/console_ui.py \
+  src/core/monitoring/plugin_integration.py \
+  src/core/monitoring/workflow_integration.py \
+  src/core/rom_metadata.py \
+  src/core/tooling.py \
+  src/core/workspace.py \
+  src/core/modifiers/__init__.py \
+  src/core/modifiers/base_modifier.py \
+  src/core/modifiers/framework/base.py \
+  src/core/modifiers/framework/modifier.py \
+  src/core/modifiers/framework/tasks.py \
+  src/core/modifiers/plugin_system.py \
+  src/core/modifiers/plugins/feature_unlock.py \
+  src/core/modifiers/smali_args.py \
+  src/core/modifiers/transaction.py \
+  src/core/modifiers/unified_modifier.py
+.venv/bin/python -m mypy --config-file mypy-curated.ini
+.venv/bin/python -m pytest -q
+```
 
 ### 预提交钩子 (可选)
 
