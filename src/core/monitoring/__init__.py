@@ -8,17 +8,16 @@ This module provides comprehensive monitoring capabilities including:
 - Resource usage monitoring
 """
 
-import time
+import functools
 import json
 import logging
-import functools
 import threading
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any, Callable
-from dataclasses import dataclass, field, asdict
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from contextlib import contextmanager
+from typing import Any, Callable, Dict, List, Optional
 
 
 @dataclass
@@ -299,7 +298,7 @@ class MonitoringReport:
 
     def generate(self) -> Dict[str, Any]:
         """Generate the complete report."""
-        duration = 0
+        duration = 0.0
         if self.end_time:
             duration = (self.end_time - self.start_time).total_seconds()
 

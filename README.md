@@ -93,6 +93,8 @@ python3 -m venv .venv
   src/core/rom/package.py \
   src/core/rom/extractors.py \
   src/core/rom/utils.py \
+  src/core/monitoring/__init__.py \
+  src/core/monitoring/plugin_integration.py \
   src/core/rom_metadata.py \
   src/core/tooling.py \
   src/core/workspace.py \
@@ -297,7 +299,7 @@ This project uses several tools to maintain code quality:
 | Tool | Purpose | Command |
 |------|---------|---------|
 | **Black** | Code formatting | `.venv/bin/python -m black src tests main.py` |
-| **Ruff** | Fast Python linting | `.venv/bin/python -m ruff check main.py tests src/app src/core/context.py src/core/props.py src/core/config_loader.py src/core/config_merger.py src/core/rom/package.py src/core/rom/extractors.py src/core/rom/utils.py src/core/rom_metadata.py src/core/tooling.py src/core/workspace.py src/core/modifiers/__init__.py src/core/modifiers/plugin_system.py src/core/modifiers/unified_modifier.py` |
+| **Ruff** | Fast Python linting | `.venv/bin/python -m ruff check main.py tests src/app src/core/context.py src/core/props.py src/core/config_loader.py src/core/config_merger.py src/core/rom/package.py src/core/rom/extractors.py src/core/rom/utils.py src/core/monitoring/__init__.py src/core/monitoring/plugin_integration.py src/core/rom_metadata.py src/core/tooling.py src/core/workspace.py src/core/modifiers/__init__.py src/core/modifiers/plugin_system.py src/core/modifiers/unified_modifier.py` |
 | **MyPy (Curated)** | Type checking for the refactored runtime and the cleaned modifier orchestration modules | `.venv/bin/python -m mypy --config-file mypy-curated.ini` |
 
 ### Developer Self-Check
@@ -317,6 +319,8 @@ Run the same checks as CI before opening a pull request:
   src/core/rom/package.py \
   src/core/rom/extractors.py \
   src/core/rom/utils.py \
+  src/core/monitoring/__init__.py \
+  src/core/monitoring/plugin_integration.py \
   src/core/rom_metadata.py \
   src/core/tooling.py \
   src/core/workspace.py \
