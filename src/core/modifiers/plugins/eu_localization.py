@@ -10,6 +10,8 @@ import json
 import shutil
 import tempfile
 import zipfile
+import subprocess
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
@@ -27,6 +29,10 @@ class EULocalizationPlugin(ModifierPlugin):
 
     def check_prerequisites(self) -> bool:
         """Check if EU localization can be applied."""
+        # Check if we have an EU bundle (Explicit override)
+        if getattr(self.ctx, "eu_bundle", None) is not None:
+            return True
+
         if not getattr(self.ctx, "is_port_eu_rom", False):
             return False
 
@@ -34,11 +40,27 @@ class EULocalizationPlugin(ModifierPlugin):
         if self._is_stock_cn():
             return True
 
-        # Check if we have an EU bundle
-        if getattr(self.ctx, "eu_bundle", None) is not None:
-            return True
-
         return False
+
+    def _get_apk_version(self, apk_path: Path) -> str:
+        """Get APK version name/code using aapt2."""
+        aapt2 = getattr(getattr(self.ctx, "tools", None), "aapt2", None)
+        if not aapt2 or not apk_path.exists():
+            return "unknown"
+
+        try:
+            cmd = [str(aapt2), "dump", "badging", str(apk_path)]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            match = re.search(r"versionName='([^']*)'", result.stdout)
+            version_name = match.group(1) if match else "unknown"
+            
+            match_code = re.search(r"versionCode='([^']*)'", result.stdout)
+            version_code = match_code.group(1) if match_code else "unknown"
+            
+            return f"{version_name} ({version_code})"
+        except Exception:
+            return "unknown"
 
     def _is_stock_cn(self) -> bool:
         """Detect if stock ROM is a CN (China) ROM.
@@ -333,12 +355,15 @@ class EULocalizationPlugin(ModifierPlugin):
         self.logger.info(f"Found {len(bundle_packages)} unique package(s) to process.")
 
         # 2. For each unique package, find and remove original app in target ROM
-        for pkg_name in bundle_packages:
+        for pkg_name, bundle_apks in bundle_packages.items():
             target_apks = self.ctx.syncer.find_apks_by_package(pkg_name, self.ctx.target_dir)
 
             if target_apks:
+                # Log version comparison
+                target_ver = self._get_apk_version(target_apks[0])
+                bundle_ver = self._get_apk_version(bundle_apks[0])
                 self.logger.info(
-                    f"Replacing EU App: {pkg_name} ({len(target_apks)} instance(s) found)"
+                    f"Replacing EU App: {pkg_name} [Target: {target_ver} -> Bundle: {bundle_ver}]"
                 )
 
                 for target_apk in target_apks:
