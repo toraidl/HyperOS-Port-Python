@@ -7,6 +7,8 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
+from src.utils.payload_dumper import PayloadDumperOutput, PayloadDumperRunner
+
 if TYPE_CHECKING:
     from .package import RomPackage
 
@@ -14,12 +16,17 @@ if TYPE_CHECKING:
 def extract_payload(
     package: RomPackage,
     partitions: Optional[List[str]],
-) -> None:
+    extract_metadata: bool = False,
+) -> Optional[PayloadDumperOutput]:
     """Extract payload.bin from ROM package.
 
     Args:
         package: The RomPackage instance.
         partitions: List of partitions to extract (None = all).
+        extract_metadata: Whether to extract metadata using --json and --metadata.
+
+    Returns:
+        PayloadDumperOutput if extract_metadata=True, None otherwise.
     """
     cmd = ["payload-dumper", "--out", str(package.images_dir)]
 
@@ -31,6 +38,23 @@ def extract_payload(
 
     cmd.append(str(package.path))
     package.shell.run(cmd)
+
+    # Extract metadata if requested
+    if extract_metadata:
+        package.logger.info(f"[{package.label}] Extracting payload metadata...")
+        try:
+            runner = PayloadDumperRunner(package.path)
+            payload_info = runner.get_full_info()
+            package.logger.info(
+                f"[{package.label}] Detected device: {payload_info.device_code}, "
+                f"Partitions: {len(payload_info.partition_names)}"
+            )
+            return payload_info
+        except Exception as e:
+            package.logger.warning(f"[{package.label}] Failed to extract metadata: {e}")
+            return None
+
+    return None
 
 
 def extract_brotli(
