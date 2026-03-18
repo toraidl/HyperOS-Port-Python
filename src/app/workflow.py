@@ -11,6 +11,7 @@ from src.app.preflight import run_preflight, save_preflight_report
 from src.app.snapshots import StageSnapshotManager
 from src.core.config_loader import load_device_config
 from src.core.context import PortingContext
+from src.core.device_auto_config import get_or_create_device_config
 from src.core.modifiers import FirmwareModifier, FrameworkModifier, RomModifier, UnifiedModifier
 from src.core.packer import Repacker
 from src.core.rom import RomPackage
@@ -82,7 +83,9 @@ def determine_pack_settings(args, ctx: PortingContext, logger: logging.Logger) -
     return pack_type, fs_type
 
 
-def run_modification_phases(ctx: PortingContext, phases_to_run: list[str], logger: logging.Logger) -> None:
+def run_modification_phases(
+    ctx: PortingContext, phases_to_run: list[str], logger: logging.Logger
+) -> None:
     """Run the requested modification phases."""
     logger.info(">>> Phase 3: Modifications")
 
@@ -242,12 +245,33 @@ def execute_porting(args, logger: logging.Logger) -> int:
     if snapshot_manager:
         snapshot_manager.capture("phase2_initialized", target_work_dir)
 
+    # Get stock device code from props or payload metadata
     stock_device_code = (
         stock.get_prop("ro.product.name_for_attestation")
         or stock.get_prop("ro.product.vendor.device")
         or "unknown"
     )
-    ctx.device_config = load_device_config(stock_device_code, logger)
+
+    # Check if device config exists, if not try auto-configuration from payload metadata
+    device_config_dir = Path("devices") / stock_device_code
+    if not device_config_dir.exists():
+        logger.info(
+            f"No device config found for {stock_device_code}, attempting auto-configuration..."
+        )
+        try:
+            ctx.device_config = get_or_create_device_config(
+                device_code=stock_device_code,
+                payload_path=Path(args.stock) if stock.rom_type.name == "PAYLOAD" else None,
+                stock_props=stock.props,
+                logger=logger,
+                payload_info=stock.payload_info,
+            )
+        except Exception as e:
+            logger.warning(f"Auto-configuration failed: {e}")
+            logger.info("Falling back to common config")
+            ctx.device_config = load_device_config(stock_device_code, logger)
+    else:
+        ctx.device_config = load_device_config(stock_device_code, logger)
 
     if cache_manager and ctx.device_config.get("cache", {}).get("partitions", False):
         logger.info("Partition-level caching enabled by device config")
@@ -285,8 +309,6 @@ def execute_porting(args, logger: logging.Logger) -> int:
         stats = cache_manager.get_cache_info()
         if stats["cached_roms"]:
             total_mb = stats.get("total_size_mb", 0)
-            logger.info(
-                f"Cache: {len(stats['cached_roms'])} ROMs cached, {total_mb:.1f} MB total"
-            )
+            logger.info(f"Cache: {len(stats['cached_roms'])} ROMs cached, {total_mb:.1f} MB total")
     logger.info("=" * 70)
     return 0
