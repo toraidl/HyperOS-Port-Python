@@ -7,7 +7,7 @@ import subprocess
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from src.utils.contextpatch import ContextPatcher
 from src.utils.fspatch import patch_fs_config
@@ -598,7 +598,7 @@ class Repacker:
         config_partitions = self.ctx.device_config.get("pack", {}).get("partitions")
         if config_partitions:
             self.logger.info(f"Using partitions from device config: {config_partitions}")
-            return config_partitions
+            return cast(List[str], config_partitions)
 
         # Check for auto-generated partition_info.json
         partition_info_path = Path(f"devices/{self.ctx.stock_rom_code}/partition_info.json")
@@ -611,7 +611,7 @@ class Repacker:
                 partitions = info.get("dynamic_partitions", [])
                 if partitions:
                     self.logger.info(f"Using partitions from partition_info.json: {partitions}")
-                    return partitions
+                    return cast(List[str], partitions)
             except Exception as e:
                 self.logger.warning(f"Failed to read partition_info.json: {e}")
 
