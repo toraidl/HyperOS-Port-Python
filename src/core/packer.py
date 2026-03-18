@@ -586,6 +586,85 @@ class Repacker:
             new_content = parts[0] + marker + "\n" + "\n".join(insertion) + parts[1]
             script_path.write_text(new_content, encoding="utf-8")
 
+    def _get_partition_list(self) -> List[str]:
+        """Get list of logical partitions to pack.
+
+        Priority:
+        1. Device config pack.partitions
+        2. partition_info.json (auto-generated)
+        3. Default list
+        """
+        # Check device config first
+        config_partitions = self.ctx.device_config.get("pack", {}).get("partitions")
+        if config_partitions:
+            self.logger.info(f"Using partitions from device config: {config_partitions}")
+            return config_partitions
+
+        # Check for auto-generated partition_info.json
+        partition_info_path = Path(f"devices/{self.ctx.stock_rom_code}/partition_info.json")
+        if partition_info_path.exists():
+            try:
+                import json
+
+                with open(partition_info_path, "r") as f:
+                    info = json.load(f)
+                partitions = info.get("dynamic_partitions", [])
+                if partitions:
+                    self.logger.info(f"Using partitions from partition_info.json: {partitions}")
+                    return partitions
+            except Exception as e:
+                self.logger.warning(f"Failed to read partition_info.json: {e}")
+
+        # Fall back to default list
+        default_partitions = [
+            "system",
+            "system_ext",
+            "product",
+            "vendor",
+            "odm",
+            "mi_ext",
+            "system_dlkm",
+            "vendor_dlkm",
+        ]
+        self.logger.info(f"Using default partition list: {default_partitions}")
+        return default_partitions
+
+    def _get_super_size(self) -> int:
+        """Get Super partition size."""
+        # 1. Check from device config first
+        if hasattr(self.ctx, "device_config"):
+            super_size = self.ctx.device_config.get("pack", {}).get("super_size")
+            if super_size:
+                return int(super_size)
+
+        # 2. Check from partition_info.json
+        partition_info_path = Path(f"devices/{self.ctx.stock_rom_code}/partition_info.json")
+        if partition_info_path.exists():
+            try:
+                import json
+
+                with open(partition_info_path, "r") as f:
+                    info = json.load(f)
+                super_size = info.get("super_size")
+                if super_size:
+                    self.logger.info(f"Using super_size from partition_info.json: {super_size}")
+                    return int(super_size)
+            except Exception as e:
+                self.logger.debug(f"Failed to read super_size from partition_info.json: {e}")
+
+        # 3. Fallback to hardcoded map
+        device_code: str = self.ctx.stock_rom_code.upper()
+        size_map: Dict[int, List[str]] = {
+            9663676416: ["FUXI", "NUWA", "ISHTAR", "MARBLE", "SOCRATES", "BABYLON"],
+            9122611200: ["SUNSTONE"],
+            11811160064: ["YUDI"],
+            13411287040: ["PANDORA", "POPSICLE", "PUDDING", "NEZHA"],
+        }
+        for size, devices in size_map.items():
+            if device_code in devices:
+                return size
+        return 9126805504
+
     def pack_ota_payload(self) -> None:
         """Pack AOSP OTA payload"""
         self.logger.info("Starting OTA Payload packing...")
@@ -593,9 +672,15 @@ class Repacker:
             shutil.rmtree(self.product_out)
         self.images_out.mkdir(parents=True, exist_ok=True)
         self.meta_out.mkdir(parents=True, exist_ok=True)
-        for part in ["SYSTEM", "SYSTEM_EXT", "PRODUCT", "VENDOR", "ODM", "MI_EXT"]:
-            (self.product_out / part).mkdir(exist_ok=True)
 
+        # Get partition list from config or auto-detect
+        pack_partitions = self._get_partition_list()
+
+        # Create directories for all partitions
+        for part in pack_partitions:
+            (self.product_out / part.upper()).mkdir(exist_ok=True)
+
+        # Copy all partition images
         for img in self.ctx.target_dir.glob("*.img"):
             shutil.copy2(img, self.images_out)
         if self.ctx.repack_images_dir.exists():
@@ -715,24 +800,3 @@ class Repacker:
             self.logger.info(f"Final OTA Package: {final_path}")
         except (subprocess.CalledProcessError, OSError) as e:
             self.logger.error(f"OTA generation failed: {e}")
-
-    def _get_super_size(self) -> int:
-        """Get Super partition size"""
-        # 1. Check from device config first
-        if hasattr(self.ctx, "device_config"):
-            super_size = self.ctx.device_config.get("pack", {}).get("super_size")
-            if super_size:
-                return int(super_size)
-
-        # 2. Fallback to hardcoded map
-        device_code: str = self.ctx.stock_rom_code.upper()
-        size_map: Dict[int, List[str]] = {
-            9663676416: ["FUXI", "NUWA", "ISHTAR", "MARBLE", "SOCRATES", "BABYLON"],
-            9122611200: ["SUNSTONE"],
-            11811160064: ["YUDI"],
-            13411287040: ["PANDORA", "POPSICLE", "PUDDING", "NEZHA"],
-        }
-        for size, devices in size_map.items():
-            if device_code in devices:
-                return size
-        return 9126805504
