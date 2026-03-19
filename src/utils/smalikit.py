@@ -96,7 +96,11 @@ class SmaliKit:
             self.log("[ERROR] append_method signature/method_block cannot be empty", Colors.FAIL)
             return content, False
 
-        if method_signature in content:
+        declaration_pattern = re.compile(
+            rf"^\s*\.method[^\n\r]*{re.escape(method_signature)}\s*$",
+            re.MULTILINE,
+        )
+        if declaration_pattern.search(content):
             return content, False
 
         normalized_block = method_block.replace("\\n", "\n").strip("\n")
