@@ -1,8 +1,10 @@
-[
-  {
-    "description": "Replace LyraSdkApp from stock",
-    "type": "file",
-    "search_path": "product/app/LyraSdkApp",
-    "files": ["LyraSdkApp.apk"]
-  }
-]
+{
+  "replacements": [
+    {
+      "description": "Replace LyraSdkApp from stock",
+      "type": "file",
+      "search_path": "product/app/LyraSdkApp",
+      "files": ["LyraSdkApp.apk"]
+    }
+  ]
+}
