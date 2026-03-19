@@ -314,7 +314,7 @@ class HTMLViewerModifier(ApkModifierPlugin):
         self.smali_patch(
             work_dir,
             file_path=str(smali_file),
-            method="doInBackground",
+            method="doInBackground([Landroid/util/Pair;)Ljava/lang/Object;",
             return_type="Ljava/lang/Object;",
             remake=do_in_background_remake,
         )
