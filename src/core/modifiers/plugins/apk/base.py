@@ -4,16 +4,17 @@ Extends the plugin system for APK-level modifications.
 Uses PortingContext's built-in tools and shell runner.
 """
 
-from abc import abstractmethod
-from pathlib import Path
-from typing import Optional, List, Dict, Any, Callable
-import logging
+import importlib
+import pkgutil
+import re
 import shutil
 import sys
-import re
+from abc import abstractmethod
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from src.core.modifiers.plugin_system import ModifierPlugin
-from src.utils.smalikit import SmaliKit, SmaliArgs
+from src.utils.smalikit import SmaliArgs, SmaliKit
 from src.utils.xml_utils import XmlUtils
 
 
@@ -441,21 +442,34 @@ class ApkModifierRegistry:
 
     @classmethod
     def auto_discover(cls, manager):
-        """Auto-discover and register all APK modifiers."""
-        # Import all APK modifiers to ensure they register
-        from src.core.modifiers.plugins.apk import installer
-        from src.core.modifiers.plugins.apk import securitycenter
-        from src.core.modifiers.plugins.apk import settings
-        from src.core.modifiers.plugins.apk import joyose
-        from src.core.modifiers.plugins.apk import powerkeeper
-        from src.core.modifiers.plugins.apk import devices_overlay
+        """Auto-discover and register all APK modifier modules dynamically."""
+        package_name = "src.core.modifiers.plugins.apk"
+        package = importlib.import_module(package_name)
+        package_paths = getattr(package, "__path__", None)
+
+        if package_paths is None:
+            cls.logger().warning("APK plugin package path not found, skipping auto-discovery")
+            return
+
+        discovered_modules = 0
+        for _, module_name, _ in pkgutil.iter_modules(package_paths, prefix=package_name + "."):
+            short_name = module_name.rsplit(".", 1)[-1]
+            if short_name in {"__init__", "base"}:
+                continue
+            try:
+                importlib.import_module(module_name)
+                discovered_modules += 1
+            except Exception as exc:
+                cls.logger().warning(f"Could not import APK plugin module {module_name}: {exc}")
 
         # Plugins auto-register via @ApkModifierRegistry.register decorator
         # Now register them with the plugin manager
-        for name, plugin_class in cls._registry.items():
+        for _, plugin_class in cls._registry.items():
             manager.register(plugin_class)
 
-        cls.logger().info(f"Auto-discovered {len(cls._registry)} APK modifiers")
+        cls.logger().info(
+            f"Auto-discovered {len(cls._registry)} APK modifiers from {discovered_modules} module(s)"
+        )
 
     @classmethod
     def logger(cls):
