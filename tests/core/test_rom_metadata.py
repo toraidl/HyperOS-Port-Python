@@ -186,3 +186,78 @@ def test_populate_rom_metadata_detects_global_region_variants(tmp_path):
         assert ctx.is_port_global_rom is True
         assert ctx.is_port_eu_rom is False
         assert ctx.port_global_region == expected_region
+
+
+def test_populate_rom_metadata_detects_stock_region_variants(tmp_path):
+    cases = (
+        (
+            {
+                "ro.product.mod_device": "pudding_eea_global",
+                "ro.miui.build.region": "",
+            },
+            "eea",
+        ),
+        (
+            {
+                "ro.product.mod_device": "pudding_ru_global",
+                "ro.miui.build.region": "",
+            },
+            "ru",
+        ),
+        (
+            {
+                "ro.product.mod_device": "pudding_tw_global",
+                "ro.miui.build.region": "",
+            },
+            "tw",
+        ),
+        (
+            {
+                "ro.product.mod_device": "pudding",
+                "ro.miui.build.region": "",
+            },
+            "cn",
+        ),
+        (
+            {
+                "ro.product.mod_device": "",
+                "ro.miui.build.region": "cn",
+            },
+            "cn",
+        ),
+    )
+
+    for idx, (stock_extra_props, expected_region) in enumerate(cases):
+        stock = make_mock_rom(
+            tmp_path,
+            f"stock_case_{idx}",
+            {
+                "ro.build.version.release": "14",
+                "ro.build.version.sdk": "34",
+                "ro.vendor.build.version.incremental": "1.0.5.0.UMCCNXM",
+                "ro.product.vendor.device": "fuxi",
+                **stock_extra_props,
+            },
+        )
+        port = make_mock_rom(
+            tmp_path,
+            f"port_case_{idx}",
+            {
+                "ro.build.version.release": "15",
+                "ro.build.version.sdk": "35",
+                "ro.mi.os.version.incremental": "2.0.1.0.VNBCNXM",
+                "ro.product.product.name": "vermeer",
+                "ro.product.mod_device": "pudding_global",
+            },
+        )
+
+        ctx = SimpleNamespace(
+            stock=stock,
+            port=port,
+            is_official_modify=False,
+            logger=logging.getLogger("test"),
+        )
+
+        populate_rom_metadata(ctx)
+
+        assert ctx.stock_region == expected_region

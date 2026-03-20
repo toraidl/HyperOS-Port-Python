@@ -91,6 +91,15 @@ def populate_rom_metadata(ctx: "PortingContext") -> None:
     build_host = ctx.port.get_prop("ro.build.host", "")
     mod_device = ctx.port.get_prop("ro.product.mod_device", "")
     mod_device_lower = (mod_device or "").lower()
+    stock_mod_device_lower = (ctx.stock.get_prop("ro.product.mod_device", "") or "").lower()
+    stock_build_region = (ctx.stock.get_prop("ro.miui.build.region", "") or "").lower()
+    stock_locale = (ctx.stock.get_prop("ro.product.locale", "") or "").lower()
+
+    ctx.stock_region = _detect_stock_region(
+        stock_mod_device_lower,
+        stock_build_region,
+        stock_locale,
+    )
 
     ctx.is_port_eu_rom = (
         "xiaomi.eu" in ctx.port.path.name.lower()
@@ -106,6 +115,7 @@ def populate_rom_metadata(ctx: "PortingContext") -> None:
         ctx.is_port_global_rom,
         ctx.port_global_region or "none",
     )
+    ctx.logger.info("Stock Region: %s", ctx.stock_region or "unknown")
 
 
 def _extract_port_device_code_segment(port_version: str) -> str:
@@ -175,5 +185,26 @@ def _detect_port_global_region(mod_device_lower: str, is_port_eu_rom: bool) -> s
     for suffix, region in region_suffix_map:
         if mod_device_lower.endswith(suffix):
             return region
+
+    return ""
+
+
+def _detect_stock_region(
+    stock_mod_device_lower: str,
+    stock_build_region: str,
+    stock_locale: str,
+) -> str:
+    global_region = _detect_port_global_region(stock_mod_device_lower, is_port_eu_rom=False)
+    if global_region:
+        return global_region
+
+    if stock_build_region:
+        return stock_build_region
+
+    if stock_mod_device_lower and "_global" not in stock_mod_device_lower:
+        return "cn"
+
+    if stock_locale in {"zh-cn", "zh-hans-cn"}:
+        return "cn"
 
     return ""

@@ -62,6 +62,7 @@ class PortingContext:
         self.is_port_eu_rom: bool = False
         self.is_port_global_rom: bool = False
         self.port_global_region: str = ""
+        self.stock_region: str = ""
 
     def _init_tools(self) -> None:
         """Resolve platform-specific tooling paths."""
