@@ -290,12 +290,21 @@ class PropertyModifier(ModifierPlugin):
         # 1. Common
         replacements = config.get("common", {})
 
-        # 2. EU vs CN
+        # 2. EU vs Global vs CN
         is_eu = getattr(self.ctx, "is_port_eu_rom", False)
+        is_global = getattr(self.ctx, "is_port_global_rom", False) and not is_eu
         if is_eu:
             replacements.update(config.get("eu_rom", {}))
+        elif is_global:
+            replacements.update(config.get("global_rom", {}))
         else:
             replacements.update(config.get("cn_rom", {}))
+
+        global_region = (getattr(self.ctx, "port_global_region", "") or "").strip().lower()
+        if global_region and global_region != "global":
+            global_mod_device = f"{base_code}_{global_region}_global"
+        else:
+            global_mod_device = f"{base_code}_global"
 
         # Format values (Placeholder replacement)
         fmt_map = {
@@ -305,6 +314,8 @@ class PropertyModifier(ModifierPlugin):
             "rom_version": rom_version,
             "build_user": self.build_user,
             "build_host": self.build_host,
+            "global_region": global_region,
+            "global_mod_device": global_mod_device,
         }
 
         # Build final key-value map for processing

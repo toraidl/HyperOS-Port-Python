@@ -30,6 +30,10 @@
         "ro.product.mod_device": "{base_code}_xiaomieu_global",
         "ro.build.host": "xiaomi.eu"
     },
+    "global_rom": {
+        "ro.product.mod_device": "{global_mod_device}",
+        "ro.build.host": "{build_host}"
+    },
     "cn_rom": {
         "ro.product.mod_device": "{base_code}",
         "ro.build.host": "{build_host}"
