@@ -170,8 +170,19 @@ def log_diff_report_summary(diff_report: dict[str, object], logger: logging.Logg
 def _to_int(value: object) -> int | None:
     if value is None:
         return None
-    try:
+    if isinstance(value, bool):
         return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, (str, bytes, bytearray)):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    try:
+        return int(str(value))
     except (TypeError, ValueError):
         return None
 
