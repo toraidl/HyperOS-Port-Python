@@ -1511,8 +1511,10 @@ class Repacker:
         chain_loc_by_name = {name: loc for name, loc in chain_parts}
 
         if vbmeta_system_info:
-            hashtree_parts = cast(List[str], vbmeta_system_info.get("hashtree_partitions", []))
-            vbmeta_system_parts = [p for p in hashtree_parts if p in known_parts]
+            vbmeta_system_hashtree_parts = cast(
+                List[str], vbmeta_system_info.get("hashtree_partitions", [])
+            )
+            vbmeta_system_parts = [p for p in vbmeta_system_hashtree_parts if p in known_parts]
             if vbmeta_system_parts:
                 lines.append(f"avb_vbmeta_system={' '.join(vbmeta_system_parts)}")
                 lines.append(f"avb_vbmeta_system_key_path={testkey}")
@@ -1548,10 +1550,12 @@ class Repacker:
             if add_hash_args:
                 lines.append(f"avb_{part}_add_hash_footer_args={' '.join(add_hash_args)}")
 
-        hash_parts = cast(set[str], profile["hash_parts"])
-        hashtree_parts = cast(set[str], profile["hashtree_parts"])
+        hash_parts = set(cast(List[str], profile.get("hash_parts", [])))
+        hashtree_parts = set(cast(List[str], profile.get("hashtree_parts", [])))
         if vbmeta_system_info:
-            hashtree_parts.update(cast(List[str], vbmeta_system_info.get("hashtree_partitions", [])))
+            hashtree_parts.update(
+                cast(List[str], vbmeta_system_info.get("hashtree_partitions", []))
+            )
 
         custom_parts = sorted(((hash_parts | hashtree_parts) - AOSP_AVB_PARTITIONS) & known_parts)
         if custom_parts:

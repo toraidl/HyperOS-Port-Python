@@ -371,7 +371,7 @@ def execute_porting(args, logger: logging.Logger) -> int:
         except (FileNotFoundError, json.JSONDecodeError) as exc:
             logger.error(str(exc))
             return 2
-        pack_type, fs_type = determine_pack_settings(args, ctx, logger)  # type: ignore[arg-type]
+        pack_type, fs_type = determine_pack_settings(args, ctx, logger)
         run_repacking(ctx, ["repack"], pack_type, fs_type, target_work_dir, logger)
         logger.info("Repack-only resume completed successfully.")
         return 0
