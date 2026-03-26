@@ -87,3 +87,19 @@ def test_parse_args_accepts_diff_report_flags(tmp_path):
 
     assert args.enable_diff_report is True
     assert args.diff_report == "out/diff-report.json"
+
+
+def test_parse_args_accepts_custom_avb_chain_flag(tmp_path):
+    stock = tmp_path / "stock.zip"
+    stock.write_bytes(b"stub")
+    args = parse_args(["--stock", str(stock), "--custom-avb-chain"])
+
+    assert args.custom_avb_chain is True
+
+
+def test_parse_args_accepts_resume_from_packer_flag(tmp_path):
+    stock = tmp_path / "stock.zip"
+    stock.write_bytes(b"stub")
+    args = parse_args(["--stock", str(stock), "--resume-from-packer"])
+
+    assert args.resume_from_packer is True

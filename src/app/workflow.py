@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 from src.app.bootstrap import clean_work_dir, initialize_cache_manager
 from src.app.diff_report import collect_artifact_state, generate_diff_report, save_diff_report
@@ -20,6 +21,7 @@ from src.utils.downloader import RomDownloader
 from src.utils.otatools_manager import OtaToolsManager
 
 DEFAULT_PHASES = ["system", "apk", "framework", "firmware"]
+REPACK_CHECKPOINT_NAME = "repack-context.json"
 
 
 def resolve_work_paths(work_dir: str | Path) -> tuple[Path, Path, Path, Path]:
@@ -74,6 +76,17 @@ def determine_pack_settings(args, ctx: PortingContext, logger: logging.Logger) -
     logger.info(
         f"KernelSU: {'enabled' if enable_ksu else 'disabled'} "
         f"(from {'CLI' if args.ksu else 'config'})"
+    )
+
+    pack_cfg = ctx.device_config.get("pack", {})
+    config_custom_avb_chain = False
+    if isinstance(pack_cfg, dict):
+        config_custom_avb_chain = bool(pack_cfg.get("custom_avb_chain", False))
+    ctx.enable_custom_avb_chain = bool(args.custom_avb_chain or config_custom_avb_chain)
+    logger.info(
+        "Custom AVB chain: %s (from %s)",
+        "enabled" if ctx.enable_custom_avb_chain else "disabled",
+        "CLI" if args.custom_avb_chain else "config",
     )
 
     pack_type = args.pack_type or ctx.device_config.get("pack", {}).get("type", "payload")
@@ -131,6 +144,77 @@ def run_repacking(
     else:
         logger.info("Generating OTA Payload...")
         packer.pack_ota_payload()
+
+
+def _checkpoint_path(work_dir: Path) -> Path:
+    return work_dir / REPACK_CHECKPOINT_NAME
+
+
+def save_repack_checkpoint(ctx: PortingContext, work_dir: Path) -> Path:
+    def as_str(value, default: str = "") -> str:
+        return value if isinstance(value, str) else default
+
+    def as_bool(value, default: bool = False) -> bool:
+        return bool(value) if isinstance(value, (bool, int, str)) else default
+
+    raw_device_config = getattr(ctx, "device_config", {})
+    device_config = raw_device_config if isinstance(raw_device_config, dict) else {}
+    payload = {
+        "stock_rom_code": as_str(getattr(ctx, "stock_rom_code", ""), "unknown"),
+        "target_rom_version": as_str(getattr(ctx, "target_rom_version", ""), ""),
+        "security_patch": as_str(getattr(ctx, "security_patch", ""), "Unknown"),
+        "is_ab_device": as_bool(getattr(ctx, "is_ab_device", False), False),
+        "base_android_version": as_str(getattr(ctx, "base_android_version", ""), "0"),
+        "port_android_version": as_str(getattr(ctx, "port_android_version", ""), "0"),
+        "is_port_eu_rom": as_bool(getattr(ctx, "is_port_eu_rom", False), False),
+        "is_port_global_rom": as_bool(getattr(ctx, "is_port_global_rom", False), False),
+        "port_global_region": as_str(getattr(ctx, "port_global_region", ""), ""),
+        "device_config": device_config,
+    }
+    path = _checkpoint_path(work_dir)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def load_repack_checkpoint(work_dir: Path, target_work_dir: Path, logger: logging.Logger):
+    path = _checkpoint_path(work_dir)
+    if not path.exists():
+        raise FileNotFoundError(f"Repack checkpoint not found: {path}")
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    def get_target_prop_file(part_name: str):
+        part_dir: Path = target_work_dir / part_name
+        candidates = [
+            part_dir / "build.prop",
+            part_dir / "system" / "build.prop",
+            part_dir / "etc" / "build.prop",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return None
+
+    ctx = SimpleNamespace(
+        stock_rom_code=data.get("stock_rom_code", "unknown"),
+        target_rom_version=data.get("target_rom_version", ""),
+        security_patch=data.get("security_patch", "Unknown"),
+        is_ab_device=bool(data.get("is_ab_device", False)),
+        base_android_version=data.get("base_android_version", "0"),
+        port_android_version=data.get("port_android_version", "0"),
+        is_port_eu_rom=bool(data.get("is_port_eu_rom", False)),
+        is_port_global_rom=bool(data.get("is_port_global_rom", False)),
+        port_global_region=data.get("port_global_region", ""),
+        target_dir=target_work_dir,
+        target_config_dir=target_work_dir / "config",
+        repack_images_dir=target_work_dir / "repack_images",
+        device_config=data.get("device_config", {}),
+        enable_ksu=False,
+        enable_custom_avb_chain=False,
+        get_target_prop_file=get_target_prop_file,
+    )
+    logger.info("Loaded repack checkpoint from %s", path)
+    return ctx
 
 
 def log_diff_report_summary(diff_report: dict[str, object], logger: logging.Logger) -> None:
@@ -279,6 +363,19 @@ def execute_porting(args, logger: logging.Logger) -> int:
     resolve_remote_inputs(args, is_official_modify, logger)
 
     work_dir, stock_work_dir, port_work_dir, target_work_dir = resolve_work_paths(args.work_dir)
+
+    if getattr(args, "resume_from_packer", False):
+        logger.info("Resume mode: packer-only repacking from existing target workspace.")
+        try:
+            ctx = load_repack_checkpoint(work_dir, target_work_dir, logger)
+        except (FileNotFoundError, json.JSONDecodeError) as exc:
+            logger.error(str(exc))
+            return 2
+        pack_type, fs_type = determine_pack_settings(args, ctx, logger)  # type: ignore[arg-type]
+        run_repacking(ctx, ["repack"], pack_type, fs_type, target_work_dir, logger)
+        logger.info("Repack-only resume completed successfully.")
+        return 0
+
     snapshot_manager = (
         StageSnapshotManager(args.snapshot_dir or (work_dir / "snapshots"), logger)
         if args.enable_snapshots or args.rollback_to_snapshot
@@ -379,6 +476,8 @@ def execute_porting(args, logger: logging.Logger) -> int:
         cache_manager.cache_partitions = True
 
     pack_type, fs_type = determine_pack_settings(args, ctx, logger)
+    checkpoint_path = save_repack_checkpoint(ctx, work_dir)
+    logger.info("Saved repack checkpoint to: %s", checkpoint_path)
 
     work_dir.mkdir(parents=True, exist_ok=True)
     stock.export_props(work_dir / "stock_debug.prop")

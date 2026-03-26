@@ -47,6 +47,7 @@ class PortingContext:
         self.syncer: ROMSyncEngine = ROMSyncEngine(self, logging.getLogger("SyncEngine"))
         self.shell: ShellRunner = ShellRunner()
         self.enable_ksu: bool = False
+        self.enable_custom_avb_chain: bool = False
         self.cache_manager: PortRomCacheManager | None = None
         self.device_config: dict[str, Any] = {}
         self.eu_bundle: str | None = None

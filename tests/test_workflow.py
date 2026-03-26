@@ -7,7 +7,9 @@ from src.app.workflow import (
     build_super_size_check,
     execute_porting,
     inject_super_size_check_into_diff_report,
+    load_repack_checkpoint,
     run_modification_phases,
+    save_repack_checkpoint,
 )
 
 
@@ -257,6 +259,38 @@ def test_execute_porting_captures_snapshots_when_enabled():
         "phase3_modified",
         "phase4_repacked",
     ]
+
+
+def test_save_and_load_repack_checkpoint_roundtrip(tmp_path):
+    ctx = MagicMock()
+    ctx.stock_rom_code = "pudding"
+    ctx.target_rom_version = "OS3.0.304.0"
+    ctx.security_patch = "2026-01-01"
+    ctx.is_ab_device = True
+    ctx.base_android_version = "16"
+    ctx.port_android_version = "16"
+    ctx.is_port_eu_rom = False
+    ctx.is_port_global_rom = True
+    ctx.port_global_region = "eea"
+    ctx.device_config = {"pack": {"type": "payload", "fs_type": "erofs"}}
+
+    work_dir = tmp_path / "build"
+    work_dir.mkdir()
+    target_dir = tmp_path / "target"
+    (target_dir / "config").mkdir(parents=True)
+    (target_dir / "repack_images").mkdir(parents=True)
+    (target_dir / "system").mkdir(parents=True)
+    (target_dir / "system" / "build.prop").write_text("ro.build.fingerprint=foo\n", encoding="utf-8")
+
+    checkpoint = save_repack_checkpoint(ctx, work_dir)
+    assert checkpoint.exists()
+
+    loaded = load_repack_checkpoint(work_dir, target_dir, MagicMock())
+    assert loaded.stock_rom_code == "pudding"
+    assert loaded.target_rom_version == "OS3.0.304.0"
+    assert loaded.is_ab_device is True
+    assert loaded.device_config["pack"]["type"] == "payload"
+    assert loaded.get_target_prop_file("system").name == "build.prop"
 
 
 def test_execute_porting_generates_diff_report_when_enabled():
