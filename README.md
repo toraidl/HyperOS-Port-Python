@@ -15,6 +15,7 @@
 - 💉 **系统补丁**: 按规则修改固件、系统、框架和 ROM 属性。
 - 🧬 **GKI 支持**: 针对 GKI 2.0 (5.10+) 及标准 GKI 设备提供 KernelSU 注入能力。
 - 🔓 **AVB 禁用**: 通过直接修改 `vbmeta.img` 禁用 Android 验证启动 (AVB)，避免修改 fstab 导致的 DSU 无法使用问题。
+- 🔐 **自定义 AVB 验证链**: 可基于 stock `vbmeta/vbmeta_system` 自动重建 AVB 拓扑，为目标镜像补齐 footer、重建 `vbmeta*.img` 并执行链路校验；同时对非动态分区应用物理分区上限保护，避免 OTA 写入超分区。
 - 🚀 **Wild Boost（狂暴引擎）**: 将红米机型的狂暴引擎适配并移植到小米机型；要求内核版本一致，当前已验证小米 12S 与小米 13。
 - 🧩 **模块化配置**: 通过简单的 JSON 文件开启/关闭功能（AOD、AI 引擎等）。
 - 🌏 **EU 本地化**: 为 Global/EU 底包恢复国内特有功能（NFC、小米钱包、小爱同学）。
@@ -160,6 +161,8 @@ sudo python3 main.py --stock <底包路径> --port <移植包路径> --pack-type
 | `--rollback-to-snapshot` | 从指定快照恢复目标工作目录并退出 | `null` |
 | `--enable-diff-report` | 生成产物差异报告（前后文件/属性/APK变化） | `false` |
 | `--diff-report` | 差异报告 JSON 输出路径 | `build/diff-report.json` |
+| `--custom-avb-chain` | 启用“自定义 AVB 验证链”（按 stock AVB 拓扑重建 footer/vbmeta 并校验） | `false` |
+| `--resume-from-packer` | 从已保存的 repack 检查点恢复，直接进入打包阶段 | `false` |
 
 ---
 
@@ -177,6 +180,7 @@ sudo python3 main.py --stock <底包路径> --port <移植包路径> --pack-type
   - `features.json` - 功能开关和属性
   - `replacements.json` - 资源替换规则
   - `partition_info.json` - 分区布局信息（动态分区列表、固件分区列表、super 大小）
+  - 启用 `--custom-avb-chain` 时会自动补全 AVB 固化字段（`physical_partition_sizes`、`avb_*_partitions`、`avb_strict_partitions`）
 
 **示例生成的 partition_info.json**:
 ```json
@@ -187,7 +191,17 @@ sudo python3 main.py --stock <底包路径> --port <移植包路径> --pack-type
         "odm", "product", "system", "system_dlkm",
         "system_ext", "vendor", "vendor_dlkm", "mi_ext"
     ],
-    "firmware_partitions": ["abl", "aop", "boot", ...]
+    "firmware_partitions": ["abl", "aop", "boot", ...],
+    "physical_partition_sizes": {
+        "boot": 100663296,
+        "recovery": 104857600
+    },
+    "avb_hash_partitions": ["boot", "dtbo", "..."],
+    "avb_hashtree_partitions": ["system", "vendor", "..."],
+    "avb_chain_partitions": [
+        {"name": "boot", "rollback_index_location": 3}
+    ],
+    "avb_strict_partitions": ["boot", "recovery", "dtbo", "..."]
 }
 ```
 

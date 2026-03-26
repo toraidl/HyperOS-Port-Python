@@ -15,6 +15,7 @@ A HyperOS ROM porting tool for Xiaomi/Redmi devices. It covers the common workfl
 - 💉 **System Patching**: Rule-based modifications for firmware, system, framework, and ROM properties.
 - 🧬 **GKI Support**: KernelSU injection support for GKI 2.0 (5.10+) and standard GKI devices.
 - 🔓 **AVB Disabling**: Disables Android Verified Boot (AVB) by directly patching `vbmeta.img`, avoiding DSU compatibility issues caused by fstab modifications.
+- 🔐 **Custom AVB Verification Chain**: Rebuilds AVB topology from stock `vbmeta/vbmeta_system`, re-signs required image footers, regenerates `vbmeta*.img`, and verifies the chain; also enforces physical partition caps for non-dynamic partitions to prevent OTA ENOSPC at flash time.
 - 🚀 **Wild Boost (Rage Engine)**: Ports the Redmi-specific rage engine to Xiaomi targets; requires matching kernel versions. Currently validated on Xiaomi 12S and Xiaomi 13.
 - 🧩 **Modular Configuration**: Toggle features (AOD, AI Engine, etc.) via simple JSON files.
 - 🌏 **EU Localization**: Restore China-exclusive features (NFC, XiaoAi) to Global/EU bases.
@@ -162,6 +163,8 @@ sudo python3 main.py --stock <path_to_stock_zip> --port <path_to_port_zip> --pac
 | `--rollback-to-snapshot` | Restore target workspace from a named snapshot and exit | `null` |
 | `--enable-diff-report` | Generate artifact diff report (files/props/APK changes) | `false` |
 | `--diff-report` | Output path for artifact diff report JSON | `build/diff-report.json` |
+| `--custom-avb-chain` | Enable custom AVB chain rebuild (stock-profiled footer/vbmeta rebuild + verification) | `false` |
+| `--resume-from-packer` | Resume from a saved repack checkpoint and jump directly to packaging | `false` |
 
 ---
 
@@ -179,6 +182,7 @@ The tool supports automatic device configuration extraction from the Stock ROM.
   - `features.json` - Feature toggles and properties
   - `replacements.json` - Resource replacement rules
   - `partition_info.json` - Partition layout (dynamic partitions, firmware partitions, super size)
+  - With `--custom-avb-chain`, AVB-persistent fields are auto-synced (`physical_partition_sizes`, `avb_*_partitions`, `avb_strict_partitions`)
 
 **Example generated partition_info.json**:
 ```json
@@ -189,7 +193,17 @@ The tool supports automatic device configuration extraction from the Stock ROM.
         "odm", "product", "system", "system_dlkm",
         "system_ext", "vendor", "vendor_dlkm", "mi_ext"
     ],
-    "firmware_partitions": ["abl", "aop", "boot", ...]
+    "firmware_partitions": ["abl", "aop", "boot", ...],
+    "physical_partition_sizes": {
+        "boot": 100663296,
+        "recovery": 104857600
+    },
+    "avb_hash_partitions": ["boot", "dtbo", "..."],
+    "avb_hashtree_partitions": ["system", "vendor", "..."],
+    "avb_chain_partitions": [
+        {"name": "boot", "rollback_index_location": 3}
+    ],
+    "avb_strict_partitions": ["boot", "recovery", "dtbo", "..."]
 }
 ```
 
