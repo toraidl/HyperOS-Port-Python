@@ -85,6 +85,38 @@ class PayloadInfo:
 
 
 @dataclass
+class DynamicPartitionMetadata:
+    """Represents Virtual A/B compression metadata from payload.bin."""
+
+    cow_version: int = 2
+    compression_factor: int = 65536
+    snapshot_enabled: bool = True
+    vabc_enabled: bool = False
+    vabc_compression_param: str = "lz4"
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DynamicPartitionMetadata":
+        """Create DynamicPartitionMetadata from dictionary."""
+        return cls(
+            cow_version=data.get("cow_version", 2),
+            compression_factor=data.get("compression_factor", 65536),
+            snapshot_enabled=data.get("snapshot_enabled", True),
+            vabc_enabled=data.get("vabc_enabled", False),
+            vabc_compression_param=data.get("vabc_compression_param", "lz4"),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "cow_version": self.cow_version,
+            "compression_factor": self.compression_factor,
+            "snapshot_enabled": self.snapshot_enabled,
+            "vabc_enabled": self.vabc_enabled,
+            "vabc_compression_param": self.vabc_compression_param,
+        }
+
+
+@dataclass
 class PayloadDumperOutput:
     """Represents parsed payload-dumper output with partitions and metadata."""
 
@@ -92,6 +124,7 @@ class PayloadDumperOutput:
     dynamic_partition_groups: List[DynamicPartitionGroup] = field(default_factory=list)
     all_partitions: List[PartitionInfo] = field(default_factory=list)
     metadata: Dict[str, str] = field(default_factory=dict)
+    dynamic_partition_metadata: Optional[DynamicPartitionMetadata] = None
 
     @property
     def partition_names(self) -> List[str]:
@@ -152,7 +185,7 @@ class PayloadDumperOutput:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
-        return {
+        result: Dict[str, Any] = {
             "payload_info": {
                 "block_size": self.payload_info.block_size,
                 "minor_version": self.payload_info.minor_version,
@@ -178,6 +211,9 @@ class PayloadDumperOutput:
             ],
             "metadata": self.metadata,
         }
+        if self.dynamic_partition_metadata is not None:
+            result["dynamic_partition_metadata"] = self.dynamic_partition_metadata.to_dict()
+        return result
 
 
 class PayloadDumperRunner:
@@ -363,6 +399,12 @@ class PayloadDumperRunner:
         elif "partitions" in json_data:
             # Fallback for older format
             output.all_partitions = [PartitionInfo.from_dict(p) for p in json_data["partitions"]]
+
+        # Parse dynamic partition metadata (VABC settings)
+        if "dynamic_partition_metadata" in json_data:
+            output.dynamic_partition_metadata = DynamicPartitionMetadata.from_dict(
+                json_data["dynamic_partition_metadata"]
+            )
 
         output.metadata = metadata
 
