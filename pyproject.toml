@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hyperos_port_tool"
-version = "1.0.0"
+version = "1.5.0"
 description = "A powerful, automated Python-based tool for porting HyperOS ROMs across Xiaomi/Redmi devices"
 readme = "README.md"
 license = {text = "Unlicense"}
