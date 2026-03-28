@@ -93,7 +93,13 @@ def determine_pack_settings(args, ctx: PortingContext, logger: logging.Logger) -
     fs_type = args.fs_type or ctx.device_config.get("pack", {}).get("fs_type", "erofs")
     logger.info(f"Pack Type: {pack_type} (from {'CLI' if args.pack_type else 'config'})")
     logger.info(f"Filesystem: {fs_type} (from {'CLI' if args.fs_type else 'config'})")
-    logger.info(f"Detected Stock ROM Type: {ctx.stock.rom_type}")
+    stock_rom_type = "unknown"
+    stock = getattr(ctx, "stock", None)
+    if stock is not None:
+        rom_type = getattr(stock, "rom_type", None)
+        if rom_type is not None:
+            stock_rom_type = str(rom_type)
+    logger.info("Detected Stock ROM Type: %s", stock_rom_type)
     return pack_type, fs_type
 
 

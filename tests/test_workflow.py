@@ -5,6 +5,7 @@ from src.app.bootstrap import initialize_cache_manager
 from src.app.workflow import (
     DEFAULT_PHASES,
     build_super_size_check,
+    determine_pack_settings,
     execute_porting,
     inject_super_size_check_into_diff_report,
     load_repack_checkpoint,
@@ -291,6 +292,23 @@ def test_save_and_load_repack_checkpoint_roundtrip(tmp_path):
     assert loaded.is_ab_device is True
     assert loaded.device_config["pack"]["type"] == "payload"
     assert loaded.get_target_prop_file("system").name == "build.prop"
+
+
+def test_determine_pack_settings_handles_resume_context_without_stock():
+    args = make_args(custom_avb_chain=False)
+    ctx = Namespace(
+        device_config={"pack": {"type": "payload", "fs_type": "erofs", "custom_avb_chain": True}},
+        enable_ksu=False,
+        enable_custom_avb_chain=False,
+    )
+    logger = MagicMock()
+
+    pack_type, fs_type = determine_pack_settings(args, ctx, logger)
+
+    assert pack_type == "payload"
+    assert fs_type == "erofs"
+    assert ctx.enable_custom_avb_chain is True
+    logger.info.assert_any_call("Detected Stock ROM Type: %s", "unknown")
 
 
 def test_execute_porting_generates_diff_report_when_enabled():
