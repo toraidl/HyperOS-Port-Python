@@ -257,6 +257,12 @@ class DeviceAutoConfig:
             "firmware_partitions": firmware_partitions,
         }
 
+        # Add dynamic_partition_metadata if available from payload
+        if self.payload_info and self.payload_info.dynamic_partition_metadata is not None:
+            partition_info["dynamic_partition_metadata"] = (
+                self.payload_info.dynamic_partition_metadata.to_dict()
+            )
+
         with open(info_path, "w", encoding="utf-8") as f:
             json.dump(partition_info, f, indent=4, ensure_ascii=False)
 

@@ -289,6 +289,32 @@ class Repacker:
                 return system_props[key]
         return None
 
+    def _get_dynamic_partition_metadata(self) -> Optional[Dict[str, Any]]:
+        """Load dynamic_partition_metadata from partition_info.json."""
+        partition_info_path = self._get_partition_info_path()
+        if not partition_info_path.exists():
+            return None
+        try:
+            data = json.loads(partition_info_path.read_text(encoding="utf-8"))
+            metadata = data.get("dynamic_partition_metadata")
+            return metadata if isinstance(metadata, dict) else None
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _is_virtual_ab_compression_enabled(self) -> bool:
+        """Check if Virtual A/B compression is enabled.
+
+        Priority:
+        1. dynamic_partition_metadata from partition_info.json
+        2. ro.virtual_ab.compression.enabled from vendor build.prop
+        """
+        metadata = self._get_dynamic_partition_metadata()
+        if metadata and metadata.get("vabc_enabled"):
+            return True
+        vendor_props = self._get_partition_build_props("vendor")
+        value = vendor_props.get("ro.virtual_ab.compression.enabled", "").lower()
+        return value == "true"
+
     def _build_footer_props_args(self, part: str, include_hash_algorithm: bool) -> List[str]:
         args: List[str] = []
         if include_hash_algorithm:
@@ -940,9 +966,7 @@ class Repacker:
                 self.logger.info(f"Using super_size from built-in map for {device_code}: {size}")
                 return size
         default_size = 9126805504
-        self.logger.info(
-            f"Using default super_size fallback for {device_code}: {default_size}"
-        )
+        self.logger.info(f"Using default super_size fallback for {device_code}: {default_size}")
         return default_size
 
     def pack_ota_payload(self) -> None:
@@ -984,7 +1008,9 @@ class Repacker:
                 shutil.copy2(init_boot, self.images_out / "init_boot.img")
 
         # Keep custom partition AVB footer behavior aligned with stock vbmeta.
-        current_partitions = [img.stem for img in self.images_out.glob("*.img") if img.stem != "cust"]
+        current_partitions = [
+            img.stem for img in self.images_out.glob("*.img") if img.stem != "cust"
+        ]
         if getattr(self.ctx, "enable_custom_avb_chain", False):
             profile = self._collect_stock_avb_profile()
             self._sync_partition_info_from_stock_avb(profile)
@@ -1038,7 +1064,9 @@ class Repacker:
         hash_parts = set(cast(List[str], vbmeta_info.get("hash_partitions", [])))
         hashtree_parts = set(cast(List[str], vbmeta_info.get("hashtree_partitions", [])))
         if vbmeta_system_info:
-            hashtree_parts.update(cast(List[str], vbmeta_system_info.get("hashtree_partitions", [])))
+            hashtree_parts.update(
+                cast(List[str], vbmeta_system_info.get("hashtree_partitions", []))
+            )
 
         return {
             "vbmeta": vbmeta_info,
@@ -1069,14 +1097,18 @@ class Repacker:
 
         payload.setdefault("device_code", self.ctx.stock_rom_code)
         payload.setdefault("super_size", self._get_super_size())
-        dynamic_partitions = cast(List[str], payload.get("dynamic_partitions", self._get_partition_list()))
+        dynamic_partitions = cast(
+            List[str], payload.get("dynamic_partitions", self._get_partition_list())
+        )
         payload["dynamic_partitions"] = dynamic_partitions
 
         hash_parts = set(cast(set[str], profile.get("hash_parts", set())))
         hashtree_parts = set(cast(set[str], profile.get("hashtree_parts", set())))
         chain_parts = cast(List[Tuple[str, int]], profile.get("chain_parts", []))
         chain_part_names = {name for name, _loc in chain_parts if name in {"boot", "recovery"}}
-        strict_parts = sorted(((hash_parts | hashtree_parts) - set(dynamic_partitions)) | chain_part_names)
+        strict_parts = sorted(
+            ((hash_parts | hashtree_parts) - set(dynamic_partitions)) | chain_part_names
+        )
 
         avbtool = self.ota_tools_dir / "bin" / "avbtool"
         stock_images_dir = Path("build/stockrom/images")
@@ -1307,7 +1339,9 @@ class Repacker:
             sign_partition(part, "add_hashtree_footer")
 
         if key_path:
-            stock_boot_info = self._run_avbtool_info_image(avbtool, stock_images_dir / "boot.img") or {}
+            stock_boot_info = (
+                self._run_avbtool_info_image(avbtool, stock_images_dir / "boot.img") or {}
+            )
             stock_recovery_info = (
                 self._run_avbtool_info_image(avbtool, stock_images_dir / "recovery.img") or {}
             )
@@ -1494,7 +1528,9 @@ class Repacker:
         )
         testkey = self._get_avb_testkey_path()
         if not testkey:
-            self.logger.warning("AVB testkey not found under otatools; skipping AVB misc_info hints.")
+            self.logger.warning(
+                "AVB testkey not found under otatools; skipping AVB misc_info hints."
+            )
             return []
         key_algo = self._algorithm_for_key(AVB_DEFAULT_ALGORITHM, testkey)
 
@@ -1518,10 +1554,7 @@ class Repacker:
             if vbmeta_system_parts:
                 lines.append(f"avb_vbmeta_system={' '.join(vbmeta_system_parts)}")
                 lines.append(f"avb_vbmeta_system_key_path={testkey}")
-                lines.append(
-                    "avb_vbmeta_system_algorithm="
-                    f"{key_algo}"
-                )
+                lines.append(f"avb_vbmeta_system_algorithm={key_algo}")
                 if vbmeta_system_info.get("rollback_index") is not None:
                     lines.append(
                         f"avb_vbmeta_system_rollback_index={vbmeta_system_info['rollback_index']}"
@@ -1583,9 +1616,7 @@ class Repacker:
                 lines.append(f"avb_{part}_partition_size={image.stat().st_size}")
             add_hashtree_args = self._build_footer_props_args(part, include_hash_algorithm=True)
             if add_hashtree_args:
-                lines.append(
-                    f"avb_{part}_add_hashtree_footer_args={' '.join(add_hashtree_args)}"
-                )
+                lines.append(f"avb_{part}_add_hashtree_footer_args={' '.join(add_hashtree_args)}")
 
         return lines
 
@@ -1635,6 +1666,23 @@ class Repacker:
             "ab_update=true",
         ]
         misc_lines.extend(self._build_avb_misc_lines_from_stock(partition_list))
+
+        if self._is_virtual_ab_compression_enabled():
+            misc_lines.append("virtual_ab_compression=true")
+            metadata = self._get_dynamic_partition_metadata()
+            compression_method = (
+                metadata.get("vabc_compression_param", "lz4") if metadata else "lz4"
+            )
+            cow_version = metadata.get("cow_version", 3) if metadata else 3
+            compression_factor = metadata.get("compression_factor", 65536) if metadata else 65536
+            misc_lines.append(f"virtual_ab_compression_method={compression_method}")
+            misc_lines.append(f"virtual_ab_cow_version={cow_version}")
+            misc_lines.append(f"virtual_ab_compression_factor={compression_factor}")
+            self.logger.info(
+                f"Virtual A/B compression enabled: method={compression_method}, "
+                f"cow_version={cow_version}, factor={compression_factor}"
+            )
+
         with open(self.meta_out / "misc_info.txt", "w") as f:
             f.write("\n".join(dict.fromkeys(misc_lines)) + "\n")
         with open(self.meta_out / "update_engine_config.txt", "w") as f:
