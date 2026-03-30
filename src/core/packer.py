@@ -1038,7 +1038,7 @@ class Repacker:
         return parse_avbtool_info_output(output)
 
     def _get_avb_testkey_path(self) -> Optional[Path]:
-        custom_key = getattr(self.ctx, "avb_key_path", None)
+        custom_key: Optional[Path] = getattr(self.ctx, "avb_key_path", None)
         if custom_key and custom_key.exists():
             self.logger.info(f"Using custom AVB key: {custom_key}")
             return custom_key
