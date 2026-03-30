@@ -89,6 +89,10 @@ def determine_pack_settings(args, ctx: PortingContext, logger: logging.Logger) -
         "CLI" if args.custom_avb_chain else "config",
     )
 
+    if hasattr(args, "avb_key") and args.avb_key:
+        ctx.avb_key_path = Path(args.avb_key).resolve()
+        logger.info("Using custom AVB key: %s", ctx.avb_key_path)
+
     pack_type = args.pack_type or ctx.device_config.get("pack", {}).get("type", "payload")
     fs_type = args.fs_type or ctx.device_config.get("pack", {}).get("fs_type", "erofs")
     logger.info(f"Pack Type: {pack_type} (from {'CLI' if args.pack_type else 'config'})")

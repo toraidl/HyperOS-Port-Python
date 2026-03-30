@@ -1038,6 +1038,11 @@ class Repacker:
         return parse_avbtool_info_output(output)
 
     def _get_avb_testkey_path(self) -> Optional[Path]:
+        custom_key = getattr(self.ctx, "avb_key_path", None)
+        if custom_key and custom_key.exists():
+            self.logger.info(f"Using custom AVB key: {custom_key}")
+            return custom_key
+
         candidates = [
             self.ota_tools_dir / "build/make/target/product/security/testkey.pem",
             self.ota_tools_dir / "security/testkey.pem",
@@ -1045,6 +1050,22 @@ class Repacker:
         for candidate in candidates:
             if candidate.exists():
                 return candidate
+
+        pk8_path = self.ota_tools_dir / "build/make/target/product/security/testkey.pk8"
+        pem_path = self.ota_tools_dir / "build/make/target/product/security/testkey.pem"
+        if pk8_path.exists() and not pem_path.exists():
+            try:
+                import subprocess
+                subprocess.run(
+                    ["openssl", "pkcs8", "-in", str(pk8_path), "-inform", "DER",
+                     "-out", str(pem_path), "-nocrypt"],
+                    check=True, capture_output=True
+                )
+                self.logger.info(f"Generated AVB signing key from {pk8_path.name}")
+                return pem_path
+            except Exception as e:
+                self.logger.warning(f"Failed to generate key from {pk8_path}: {e}")
+
         return None
 
     def _collect_stock_avb_profile(self) -> Dict[str, Any]:
