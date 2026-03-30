@@ -1676,10 +1676,33 @@ class Repacker:
                 "product_dlkm",
             ]
         ]
-        with open(self.meta_out / "dynamic_partitions_info.txt", "w") as f:
-            f.write(
-                f"super_partition_size={super_size}\nsuper_partition_groups=qti_dynamic_partitions\nsuper_qti_dynamic_partitions_group_size={group_size}\nsuper_qti_dynamic_partitions_partition_list={' '.join(super_parts)}\nvirtual_ab=true\nvirtual_ab_compression=true\n"
+
+        dp_lines = [
+            f"super_partition_size={super_size}",
+            "super_partition_groups=qti_dynamic_partitions",
+            f"super_qti_dynamic_partitions_group_size={group_size}",
+            f"super_qti_dynamic_partitions_partition_list={' '.join(super_parts)}",
+            "virtual_ab=true",
+        ]
+
+        if self._is_virtual_ab_compression_enabled():
+            dp_lines.append("virtual_ab_compression=true")
+            metadata = self._get_dynamic_partition_metadata()
+            compression_method = (
+                metadata.get("vabc_compression_param", "lz4") if metadata else "lz4"
             )
+            cow_version = metadata.get("cow_version", 3) if metadata else 3
+            compression_factor = metadata.get("compression_factor", 65536) if metadata else 65536
+            dp_lines.append(f"virtual_ab_compression_method={compression_method}")
+            dp_lines.append(f"virtual_ab_cow_version={cow_version}")
+            dp_lines.append(f"virtual_ab_compression_factor={compression_factor}")
+            self.logger.info(
+                f"Virtual A/B compression enabled: method={compression_method}, "
+                f"cow_version={cow_version}, factor={compression_factor}"
+            )
+
+        with open(self.meta_out / "dynamic_partitions_info.txt", "w") as f:
+            f.write("\n".join(dp_lines) + "\n")
 
         misc_lines = [
             "recovery_api_version=3",
@@ -1688,6 +1711,7 @@ class Repacker:
         ]
         misc_lines.extend(self._build_avb_misc_lines_from_stock(partition_list))
 
+        # Also write VABC parameters to misc_info.txt for ota_from_target_files
         if self._is_virtual_ab_compression_enabled():
             misc_lines.append("virtual_ab_compression=true")
             metadata = self._get_dynamic_partition_metadata()
@@ -1699,10 +1723,6 @@ class Repacker:
             misc_lines.append(f"virtual_ab_compression_method={compression_method}")
             misc_lines.append(f"virtual_ab_cow_version={cow_version}")
             misc_lines.append(f"virtual_ab_compression_factor={compression_factor}")
-            self.logger.info(
-                f"Virtual A/B compression enabled: method={compression_method}, "
-                f"cow_version={cow_version}, factor={compression_factor}"
-            )
 
         with open(self.meta_out / "misc_info.txt", "w") as f:
             f.write("\n".join(dict.fromkeys(misc_lines)) + "\n")

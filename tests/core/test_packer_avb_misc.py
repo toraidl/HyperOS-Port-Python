@@ -561,13 +561,17 @@ def test_virtual_ab_compression_method_added_when_enabled(monkeypatch, tmp_path:
 
     repacker._generate_meta_info()
 
+    dp_info = (tmp_path / "out/target/product/pudding/META/dynamic_partitions_info.txt").read_text(
+        encoding="utf-8"
+    )
     misc_info = (tmp_path / "out/target/product/pudding/META/misc_info.txt").read_text(
         encoding="utf-8"
     )
-    assert "virtual_ab_compression=true" in misc_info
-    assert "virtual_ab_compression_method=lz4" in misc_info
-    assert "virtual_ab_cow_version=3" in misc_info
-    assert "virtual_ab_compression_factor=65536" in misc_info
+    for content in [dp_info, misc_info]:
+        assert "virtual_ab_compression=true" in content
+        assert "virtual_ab_compression_method=lz4" in content
+        assert "virtual_ab_cow_version=3" in content
+        assert "virtual_ab_compression_factor=65536" in content
 
 
 def test_virtual_ab_compression_method_not_added_when_disabled(monkeypatch, tmp_path: Path) -> None:
@@ -603,13 +607,20 @@ def test_virtual_ab_compression_method_not_added_when_disabled(monkeypatch, tmp_
 
     repacker._generate_meta_info()
 
+    dp_info = (tmp_path / "out/target/product/pudding/META/dynamic_partitions_info.txt").read_text(
+        encoding="utf-8"
+    )
     misc_info = (tmp_path / "out/target/product/pudding/META/misc_info.txt").read_text(
         encoding="utf-8"
     )
-    assert "virtual_ab_compression=true" not in misc_info
-    assert "virtual_ab_compression_method=lz4" not in misc_info
-    assert "virtual_ab_cow_version=3" not in misc_info
-    assert "virtual_ab_compression_factor=65536" not in misc_info
+    for content in [dp_info, misc_info]:
+        assert "virtual_ab_compression=true" not in content
+        assert "virtual_ab_compression_method=lz4" not in content
+        assert "virtual_ab_cow_version=3" not in content
+        assert "virtual_ab_compression_factor=65536" not in content
+    assert "virtual_ab_compression_method=lz4" not in dp_info
+    assert "virtual_ab_cow_version=3" not in dp_info
+    assert "virtual_ab_compression_factor=65536" not in dp_info
 
 
 def test_virtual_ab_uses_metadata_from_partition_info(monkeypatch, tmp_path: Path) -> None:
@@ -667,10 +678,14 @@ def test_virtual_ab_uses_metadata_from_partition_info(monkeypatch, tmp_path: Pat
 
     repacker._generate_meta_info()
 
+    dp_info = (tmp_path / "out/target/product/pudding/META/dynamic_partitions_info.txt").read_text(
+        encoding="utf-8"
+    )
     misc_info = (tmp_path / "out/target/product/pudding/META/misc_info.txt").read_text(
         encoding="utf-8"
     )
-    assert "virtual_ab_compression=true" in misc_info
-    assert "virtual_ab_compression_method=gz" in misc_info
-    assert "virtual_ab_cow_version=3" in misc_info
-    assert "virtual_ab_compression_factor=32768" in misc_info
+    for content in [dp_info, misc_info]:
+        assert "virtual_ab_compression=true" in content
+        assert "virtual_ab_compression_method=gz" in content
+        assert "virtual_ab_cow_version=3" in content
+        assert "virtual_ab_compression_factor=32768" in content
