@@ -8,7 +8,8 @@
         "support_manual_dimming": true,
         "support_main_xiaoai": true,
         "support_ota_validate": false,
-        "support_power_consumption": true
+        "support_power_consumption": true,
+	    "support_simplified_colormode": false
     },
     "build_props": {
         "vendor": {
