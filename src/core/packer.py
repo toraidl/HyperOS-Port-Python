@@ -1016,6 +1016,7 @@ class Repacker:
             self._sync_partition_info_from_stock_avb(profile)
             self._apply_avb_to_custom_images(current_partitions)
             self._rebuild_vbmeta_images(current_partitions)
+            self._generate_care_map()
 
         self._generate_meta_info()
         self._copy_build_props()
@@ -1530,6 +1531,90 @@ class Repacker:
         self.shell.run(cmd, env=self._avb_env())
         self.logger.info("AVB verification succeeded for vbmeta chain.")
 
+    def _generate_care_map(self) -> None:
+        """Generate care_map.pb for AVB hashtree-enabled partitions.
+
+        Identifies partitions with AVB hashtree enabled from the stock AVB profile
+        and generates META/care_map.pb using the care_map_generator tool.
+        """
+        profile = self._collect_stock_avb_profile()
+        if not profile:
+            self.logger.info("Skipping care_map generation: stock AVB profile unavailable.")
+            return
+
+        care_map_gen = self.ota_tools_dir / "bin" / "care_map_generator"
+        if not care_map_gen.exists():
+            self.logger.warning("care_map_generator not found, skipping care_map.pb generation.")
+            return
+
+        # Partitions that should be included in care_map (hashtree-enabled partitions)
+        # These are typically the large dynamic partitions with dm-verity
+        hashtree_parts = cast(set[str], profile.get("hashtree_parts", set()))
+        if not hashtree_parts:
+            self.logger.info("No hashtree partitions found, skipping care_map generation.")
+            return
+
+        # Build care_map text content
+        # Format:
+        #   /partition_name
+        #   extent_start,extent_end
+        # Where extents represent the ranges that need to be checked during OTA
+        care_map_lines: List[str] = []
+        for part in sorted(hashtree_parts):
+            image = self.images_out / f"{part}.img"
+            if not image.exists():
+                self.logger.debug("Skipping %s: image not found", part)
+                continue
+
+            # Add partition entry
+            care_map_lines.append(f"/{part}")
+
+            # Calculate image extents (in 4K blocks for care_map)
+            # The care_map format uses block numbers (typically 4KB blocks)
+            image_size = image.stat().st_size
+            block_size = 4096
+            num_blocks = (image_size + block_size - 1) // block_size
+
+            # Add extent covering the entire image
+            # Format: start_block,end_block (exclusive)
+            care_map_lines.append(f"0,{num_blocks}")
+
+            self.logger.debug("Added %s to care_map (%d blocks)", part, num_blocks)
+
+        if not care_map_lines:
+            self.logger.info("No valid partitions for care_map, skipping generation.")
+            return
+
+        # Write intermediate text file
+        care_map_txt = self.meta_out / "care_map.txt"
+        self.meta_out.mkdir(parents=True, exist_ok=True)
+        care_map_txt.write_text("\n".join(care_map_lines) + "\n", encoding="utf-8")
+
+        # Generate care_map.pb using care_map_generator
+        care_map_pb = self.meta_out / "care_map.pb"
+        cmd = [
+            str(care_map_gen),
+            str(care_map_txt),
+            str(care_map_pb),
+        ]
+
+        try:
+            self.shell.run(cmd, env=self._avb_env())
+            self.logger.info(
+                "Generated care_map.pb with partitions: %s",
+                ", ".join(sorted(hashtree_parts))
+            )
+        except subprocess.CalledProcessError as e:
+            self.logger.warning("Failed to generate care_map.pb: %s", e)
+            # Don't fail the build if care_map generation fails
+            # Clean up the text file if pb generation failed
+            if care_map_txt.exists():
+                care_map_txt.unlink()
+        else:
+            # Clean up intermediate text file after successful generation
+            if care_map_txt.exists():
+                care_map_txt.unlink()
+
     def _build_avb_misc_lines_from_stock(self, partition_list: List[str]) -> List[str]:
         """Infer AVB-related misc_info lines from stock images."""
         profile = self._collect_stock_avb_profile()
@@ -1737,11 +1822,17 @@ class Repacker:
             "system_ext": "SYSTEM_EXT",
             "vendor": "VENDOR",
             "odm": "ODM",
+            "system_dlkm": "SYSTEM_DLKM",
+            "vendor_dlkm": "VENDOR_DLKM",
+            "odm_dlkm": "ODM_DLKM",
+            "product_dlkm": "PRODUCT_DLKM",
         }
         for part_lower, part_upper in mapping.items():
             src_prop: Optional[Path] = self.ctx.get_target_prop_file(part_lower)
             if src_prop and src_prop.exists():
-                shutil.copy2(src_prop, self.product_out / part_upper / "build.prop")
+                dest_dir = self.product_out / part_upper
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_prop, dest_dir / "build.prop")
             else:
                 self.logger.warning(f"build.prop for {part_lower} not found.")
 

@@ -189,12 +189,14 @@ class BufferedLogHandler(logging.Handler):
                 if isinstance(handler, logging.StreamHandler) and not isinstance(
                     handler, logging.FileHandler
                 ):
-                    handler.stream.write(content)
-                    handler.flush()
+                    if handler.stream is not None:
+                        handler.stream.write(content)
+                        handler.flush()
                 # If it's a FileHandler, we also write it
                 elif isinstance(handler, logging.FileHandler):
-                    handler.stream.write(content)
-                    handler.flush()
+                    if handler.stream is not None:
+                        handler.stream.write(content)
+                        handler.flush()
                 else:
                     # For other handlers, we might need to emit a record,
                     # but for this specific tool, these two are the main ones.
